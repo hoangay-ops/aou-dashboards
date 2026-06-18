@@ -130,7 +130,28 @@ const STATUS_CFG = {
 // chip outline, accent strip, or text color on white. This helper returns a
 // darker variant for those contexts. The canonical color is preserved
 // everywhere else (fills, low-opacity chip backgrounds, etc.).
-function goalBorderColor(g){
+function renderText(value, fallback) {
+  if (fallback === undefined) fallback = "";
+
+  if (value == null) return fallback;
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (typeof value === "function") {
+    console.warn("Function rendered as text:", value);
+    return fallback;
+  }
+
+  if (typeof value === "object") {
+    console.warn("Object rendered as text:", value);
+    return fallback;
+  }
+
+  return String(value);
+}
+   function goalBorderColor(g){
   if(!g) return "#999";
   return g.num === "6" ? "#9A9A9A" : g.color;
 }
@@ -1265,14 +1286,29 @@ function QpeMainView(props){
         <div style={{display:"grid",gridTemplateColumns:"repeat(3, minmax(0, 1fr))",gap:12}}>
           {Object.keys(GOALS).filter(function(k){return goalFocus === "all" || goalFocus === k;}).map(function(k){
             var g = GOALS[k];
-            var lane = goalLanes[k];
+            var lane = Array.isArray(goalLanes[k]) ? goalLanes[k] : [];
             var goalOwner = goalsRef[k] && goalsRef[k].owner;
-            return (
+            console.log("QPE goal card", {
+  k: k,
+  g: g,
+  gNum: g && g.num,
+  gShort: g && g.short,
+  lane: lane,
+  goalOwner: goalOwner,
+  goalOwnerType: typeof goalOwner
+});
+       return (
               <div key={k} style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10}}>
                 <div onClick={function(){onGoalDrill(k);}} style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:8,gap:6,borderBottom:"2px solid "+goalBorderColor(g)+"55",paddingBottom:6,cursor:"pointer"}}>
                   <div style={{display:"flex",alignItems:"baseline",gap:8,minWidth:0,flex:1}}>
-                    <span style={{fontSize:13,fontWeight:700,color:goalBorderColor(g),whiteSpace:"nowrap"}}>Goal {g.num}: {g.short}</span>
-                    {goalOwner && <span style={{fontSize:10.5,color:"#999",fontWeight:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>· {goalOwner}</span>}
+                    <span style={{fontSize:13,fontWeight:700,color:goalBorderColor(g),whiteSpace:"nowrap"}}>
+  Goal {renderText(g && g.num)}: {renderText(g && g.short)}
+</span>
+                    {goalOwner && (
+  <span style={{fontSize:10.5,color:"#999",fontWeight:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+    · {renderText(goalOwner)}
+  </span>
+)}
                   </div>
                   <span style={{fontSize:10.5,color:"#999",flexShrink:0}}>{lane.length}</span>
                 </div>
@@ -1283,11 +1319,26 @@ function QpeMainView(props){
                         <div key={i.id} onClick={function(){onDrill(i.id);}} style={{padding:"6px 8px",margin:"0 -8px",borderRadius:5,cursor:"pointer",display:"flex",alignItems:"center",gap:6,minWidth:0,transition:"background .12s"}}
                           onMouseEnter={function(e){e.currentTarget.style.background="#f7fafd";}}
                           onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}>
-                          <span style={{fontSize:12,color:"#333",flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={i.name}>{i.name} <span style={{fontFamily:"monospace",fontSize:9.5,color:"#aaa",fontWeight:400}}>{i.id}</span></span>
+                          <span
+  style={{fontSize:12,color:"#333",flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}
+  title={renderText(i.name)}
+>
+  {renderText(i.name)}
+  {" "}
+  <span style={{fontFamily:"monospace",fontSize:9.5,color:"#aaa",fontWeight:400}}>
+    {renderText(i.id)}
+  </span>
+</span>
                           {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
                           {i.status === "Backlogged" && <Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx} size={8.5}>Backlogged</Chip>}
                           {i.status === "Complete" && <Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx} size={8.5}>Completed</Chip>}
                           {i.status === "Not Funded" && <Chip bg={STATUS_CFG["Not Funded"].bg} tx={STATUS_CFG["Not Funded"].tx} size={8.5}>Not Funded</Chip>}
+                        console.log("QPE lane item", {
+  id: i && i.id,
+  name: i && i.name,
+  nameType: typeof (i && i.name),
+  item: i
+});
                         </div>
                       );
                     })}
