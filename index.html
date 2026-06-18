@@ -54,14 +54,16 @@ const ROADMAP_SHEET_GID = "0";
 // Canonical goal definitions — keyed by numeric string ("1"–"6").
 // The Roadmap view will need a normalizer to convert its composite sheet keys
 // (e.g. "1-Enrollment & Retention") into these numeric keys when it ports.
-// Colors per Dashboard Consistency Spec §2.4.
+// Colors per Dashboard Consistency Spec §2.4 (Goal 4 darkened slightly for
+// readability on white). The `name` field uses the abbreviated forms confirmed
+// by the Program Lead so the goal chip and drill-down detail line agree.
 const GOALS = {
-  "1":{num:"1",name:"Enrollment & Retention",          short:"Enrollment & Retention",color:"#5EAEE0"},
-  "2":{num:"2",name:"Data Available to Researchers",   short:"Data to Researchers",   color:"#7AC79B"},
-  "3":{num:"3",name:"Partnered Research Studies",      short:"Partnered Research",    color:"#F58D77"},
-  "4":{num:"4",name:"Researcher Access & Impact",      short:"Researcher Access",     color:"#FFDD7F"},
-  "5":{num:"5",name:"Participant Return of Value",     short:"Return of Value",       color:"#F2728C"},
-  "6":{num:"6",name:"Management & Operations",         short:"Management & Ops",      color:"#D8D8D8"},
+  "1":{num:"1",name:"Enrollment & Retention",       short:"Enrollment & Retention",color:"#5EAEE0"},
+  "2":{num:"2",name:"Data to Researchers",          short:"Data to Researchers",   color:"#7AC79B"},
+  "3":{num:"3",name:"Partnered Research Studies",   short:"Partnered Research",    color:"#F58D77"},
+  "4":{num:"4",name:"Researcher Access",            short:"Researcher Access",     color:"#F0C04F"},
+  "5":{num:"5",name:"Return of Value",              short:"Return of Value",       color:"#F2728C"},
+  "6":{num:"6",name:"Management & Ops",             short:"Management & Ops",      color:"#D8D8D8"},
 };
 
 // Canonical taxonomy fallback — used when sheet rows omit owner/name fields.
