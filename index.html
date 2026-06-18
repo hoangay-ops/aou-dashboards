@@ -1386,12 +1386,11 @@ function QpeView(props){
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
       {/* View-specific subheader */}
-      <div style={{padding:"10px 24px",background:"#fafafa",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
+      <div style={{padding:"6px 24px",background:"#fafafa",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:13,fontWeight:700,color:"#333"}}>Quarterly Planning</span>
           <span style={{fontSize:11,color:"#999"}}>· {filtered.length} of {initiatives.length} initiatives</span>
         </div>
-        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
       </div>
 
       {/* Filter toolbar */}
@@ -1406,6 +1405,7 @@ function QpeView(props){
         {anyFilter && <button onClick={clearAll} style={{fontSize:11.5,background:"none",border:"none",color:"#C0392B",cursor:"pointer",fontWeight:500}}>✕ Clear</button>}
         <div style={{flex:1}}/>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}}/>
+        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
       </div>
 
       {/* Main content */}
@@ -1744,8 +1744,11 @@ function CapGoalHealthRows(props){
         return (
           <div key={k} onClick={function(){props.onGoalClick(k);}} style={{cursor:"pointer"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:3}}>
-              <div style={{fontSize:12.5,fontWeight:800,color:capGoalHealthColor(g),whiteSpace:"nowrap"}}>G{k} {g.short}</div>
-              <div style={{fontSize:11.5,color:"#4f5f6f",fontWeight:650,whiteSpace:"nowrap"}}>{h.high} on · {h.med} mon · {h.risk} risk</div>
+              <div style={{fontSize:11.5,fontWeight:600,color:"#333",whiteSpace:"nowrap"}}>
+                <span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:goalBorderColor(g),marginRight:6,verticalAlign:"middle"}}/>
+                G{k} {g.short}
+              </div>
+              <div style={{fontSize:10.5,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>{h.high} on · {h.med} mon · {h.risk} risk</div>
             </div>
             <div style={{height:7,borderRadius:4,overflow:"hidden",background:"#eef1f4",display:"flex"}}>
               {segs.map(function(s, i){return s.n > 0 ? <div key={i} style={{width:(s.n/total*100)+"%",background:s.c}}/> : null;})}
@@ -2296,15 +2299,6 @@ function CapacityView(props){
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
-      {/* View-specific subheader */}
-      <div style={{padding:"6px 24px",background:"#fafafa",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:13,fontWeight:700,color:"#333"}}>Capacity Planning</span>
-          <span style={{fontSize:11,color:"#999"}}>· {filtered.length} of {health.total} initiatives</span>
-        </div>
-        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
-      </div>
-
       {/* Mismatch banner — structural data quality alert per Project Instructions */}
       {!bannerDismissed && <CapMismatchBanner mismatches={mismatches} onDismiss={function(){setBannerDismissed(true);}}/>}
 
@@ -2371,6 +2365,7 @@ function CapacityView(props){
         <div style={{flex:1}}/>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍  Search…" style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}}/>
         <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,background:"#fff",border:"1px solid #ececec",color:"#888"}}><strong style={{color:"#333"}}>{filtered.length}</strong> of {health.total}</span>
+        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
       </div>
 
       {/* Workspace */}
