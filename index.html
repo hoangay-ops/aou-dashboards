@@ -469,9 +469,806 @@ function useDataLoader(){
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   VIEW PLACEHOLDERS
-   These will be replaced in Steps 2–4 by the ported QPE, Capacity, and
-   Roadmap views. For now they're stubs that prove the shell works.
+   QPE VIEW — ported from qpe_dashboard_patched.html (Step 2)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+// QPE-specific status list (drives status filter dropdown).
+const QPE_STATUS_KEYS = ["Committed","Proposed","Backlogged","Complete","Eliminated","Concept","Not Funded"];
+const QPE_QUARTERS_HIST = [CYCLE.baseline, CYCLE.previous, CYCLE.current];
+
+// QPE-specific status parser (handles edge cases like "Concept" + "Committed" combo).
+function qpeParseStatus(raw){
+  if(!raw) return null;
+  var s = String(raw).trim();
+  if(/not\s*funded|unfunded/i.test(s)) return "Not Funded";
+  if(/proposed/i.test(s)) return "Proposed";
+  if(/committed/i.test(s) && /concept/i.test(s)) return "Concept";
+  if(/committed/i.test(s)) return "Committed";
+  if(/backlog/i.test(s)) return "Backlogged";
+  if(/complete/i.test(s)) return "Complete";
+  if(/eliminat/i.test(s)) return "Eliminated";
+  if(/concept/i.test(s)) return "Concept";
+  return null;
+}
+function qpeParseRank(v){
+  if(!v) return null;
+  var s = String(v).trim().toLowerCase();
+  if(s === "" || s === "n/a" || s === "na" || s === "-" || s === "none") return null;
+  var n = parseInt(s.replace(/[^\d]/g,""), 10);
+  return isNaN(n) ? null : n;
+}
+function qpeFindHeaderRow(rows){
+  for(var i=0;i<Math.min(5,rows.length);i++){
+    var normed = rows[i].map(normHeader);
+    var hasId = normed.indexOf("id") !== -1;
+    var hasName = normed.indexOf("initiative name") !== -1 || normed.indexOf("name") !== -1;
+    if(hasId && hasName) return i;
+  }
+  return 0;
+}
+
+// Parse the planning sheet CSV into QPE's initiative shape (with history, rank fields).
+function qpeNormalizePlanning(csvText){
+  if(!csvText) return [];
+  var rows = parseCSV(csvText);
+  if(rows.length === 0) return [];
+  var headerIdx = qpeFindHeaderRow(rows);
+  var header = rows[headerIdx];
+  var body = rows.slice(headerIdx+1);
+  var get = makeRowAccessor(header);
+
+  var inits = [];
+  body.forEach(function(row){
+    var blank = true;
+    for(var i=0;i<row.length;i++){ if(row[i] && String(row[i]).trim()){ blank=false; break; } }
+    if(blank) return;
+
+    var id = get(row, "ID");
+    var name = get(row, "Initiative Name", "Name");
+    if(!id || !name) return;
+
+    var goalRaw = get(row, "5 year Goal", "Goal", "5-year Goal");
+    var goalMatch = String(goalRaw).match(/(\d)/);
+    var goal = goalMatch ? goalMatch[1] : "";
+    if(!GOALS[goal]) return;
+
+    var q3s = get(row, "Q3 2026 Status", "Q3 Status");
+    var q2s = get(row, "Q2 2026 Status", "Q2 Status");
+    var prev = get(row, "Previous Status (Q4 '25)", "Previous Status", "Q4 2025 Status");
+    var q2r = qpeParseRank(get(row, "Q2 '26 Rank", "Q2 2026 Rank"));
+    var q3r = qpeParseRank(get(row, "New Q3 '26 Rank", "Q3 '26 Rank", "Q3 2026 Rank"));
+    var pt = get(row, "Project Type", "Type");
+
+    var history = [];
+    if(prev) history.push({quarter:CYCLE.baseline, status:qpeParseStatus(prev), raw:prev});
+    if(q2s)  history.push({quarter:CYCLE.previous, status:qpeParseStatus(q2s),  raw:q2s});
+    if(q3s)  history.push({quarter:CYCLE.current,  status:qpeParseStatus(q3s),  raw:q3s});
+
+    inits.push({
+      id:id, name:name, goal:goal,
+      obj: get(row, "26 Obj", "Objective", "Obj"),
+      objName: get(row, "Objective Name", "Obj Name"),
+      status: qpeParseStatus(q3s) || qpeParseStatus(q2s) || qpeParseStatus(prev) || qpeParseStatus(pt),
+      history: history, q2Rank:q2r, q3Rank:q3r,
+      isNew: /^new\b/i.test(pt),
+      fullDesc: get(row, "Initiative Full Description", "Full Description", "Description"),
+      shortDesc: get(row, "Short Description (for publishing)", "Short Description") ||
+                 get(row, "Initiative Full Description", "Full Description", "Description"),
+      objOwner: get(row, "Obj Owner", "Objective Owner", "Owner"),
+      poc: get(row, "POC or PdM", "POC", "PdM"),
+    });
+  });
+  return inits;
+}
+
+// Parse the goals reference CSV into QPE's goalsRef shape.
+function qpeNormalizeGoals(csvText){
+  if(!csvText) return {};
+  var rows = parseCSV(csvText);
+  if(rows.length === 0) return {};
+  var headerIdx = 0;
+  for(var i=0;i<Math.min(5,rows.length);i++){
+    var normed = rows[i].map(normHeader);
+    if(normed.some(function(h){return h === "goal" || h === "goal #" || h === "goal number" || h === "g#";})){
+      headerIdx = i; break;
+    }
+  }
+  var header = rows[headerIdx];
+  var body = rows.slice(headerIdx+1);
+  var get = makeRowAccessor(header);
+
+  var map = {};
+  var lastGoalNum = null;
+  body.forEach(function(row){
+    var blank = true;
+    for(var i=0;i<row.length;i++){ if(row[i] && String(row[i]).trim()){ blank=false; break; } }
+    if(blank) return;
+
+    var goalRaw = get(row, "Goal", "Goal #", "Goal Number", "G#", "5 year Goal");
+    var goalMatch = String(goalRaw).match(/(\d)/);
+    var goalNum = goalMatch ? goalMatch[1] : "";
+    if(!goalNum && lastGoalNum) goalNum = lastGoalNum;
+    if(!goalNum) return;
+    lastGoalNum = goalNum;
+
+    var goalName = get(row, "Goal Name", "Goal Title");
+    var goalDesc = get(row, "Goal Description", "Goal Desc", "Description");
+    var goalOwner = get(row, "Goal Owner", "Goal Owner Name");
+
+    if(!map[goalNum]){
+      map[goalNum] = {num:goalNum, name:goalName, desc:goalDesc, owner:goalOwner, objectives:[]};
+    } else {
+      if(goalName && !map[goalNum].name) map[goalNum].name = goalName;
+      if(goalDesc && !map[goalNum].desc) map[goalNum].desc = goalDesc;
+      if(goalOwner && !map[goalNum].owner) map[goalNum].owner = goalOwner;
+    }
+
+    var obj = get(row, "Objective", "Obj", "Objective #", "Obj #");
+    var objName = get(row, "Objective Name", "Obj Name");
+    var objDesc = get(row, "Objective Description", "Obj Description", "Obj Desc");
+    var objOwner = get(row, "Objective Owner", "Obj Owner", "Owner");
+    if(obj){
+      var existing = map[goalNum].objectives.find(function(o){return o.obj === obj;});
+      if(existing){
+        if(objOwner && existing.owners.indexOf(objOwner) === -1) existing.owners.push(objOwner);
+        if(objDesc && !existing.desc) existing.desc = objDesc;
+        if(objName && !existing.name) existing.name = objName;
+      } else {
+        map[goalNum].objectives.push({obj:obj, name:objName, desc:objDesc, owners: objOwner ? [objOwner] : []});
+      }
+    }
+  });
+  return map;
+}
+
+// Parse the capacity CSV — QPE only needs the summary fields (CI, performers, breakdown).
+function qpeNormalizeCapacity(csvText){
+  if(!csvText) return {};
+  var rows = parseCSV(csvText);
+  if(rows.length === 0) return {};
+  var headerIdx = 0;
+  for(var i=0;i<Math.min(6,rows.length);i++){
+    if(rows[i][0] && normHeader(rows[i][0]) === "id"){ headerIdx = i; break; }
+  }
+  var header = rows[headerIdx];
+  var body = rows.slice(headerIdx+1);
+  var get = makeRowAccessor(header);
+
+  var map = {};
+  body.forEach(function(row){
+    var id = get(row, "ID");
+    if(!id || !/^\d+\.\d+/.test(id)) return;
+    var cfRaw = get(row, "Confidence Factor");
+    var cf = cfRaw.indexOf("%") !== -1 ? parseFloat(cfRaw)/100 : (parseFloat(cfRaw)||0);
+    if(isNaN(cf)) cf = 0;
+    var ciLabel = String(row[2]||"").trim();
+    var ciMatch = ciLabel.match(/(\d+)/);
+    function int(key){ return parseInt(get(row, key)) || 0; }
+    map[id] = {
+      confidenceFactor: cf, confidenceLabel: ciLabel,
+      ciNum: ciMatch ? parseInt(ciMatch[1],10) : null,
+      performers: int("Performers"), committed: int("Committed"),
+      possiblyXS: int("Possibly - XS"), possiblyS: int("Possibly - S"),
+      possiblyM: int("Possibly - M"), possiblyL: int("Possibly - L"),
+      possiblyXL: int("Possibly - XL"),
+      noCapacity: int("No Capacity Remaining"),
+      notPerforming: int("Not Performing"),
+    };
+  });
+  return map;
+}
+
+function qpeObjectiveRef(goalsRef, goalNum, obj){
+  var ref = goalsRef && goalsRef[goalNum];
+  if(!ref || !ref.objectives || !obj) return null;
+  return ref.objectives.find(function(o){return o.obj === obj;}) || null;
+}
+
+// CI tier color for the capacity signal block.
+function qpeCiColor(n){
+  if(n == null) return "#999";
+  if(n >= 8) return "#1E8449";
+  if(n >= 6) return "#B7950B";
+  return "#C0392B";
+}
+
+// QPE drill panel. Now uses the shared IdentityBlock at the top, with
+// QPE-specific sections below (status across quarters, capacity signal preview,
+// summary, full description).
+function QpeDrillPanel(props){
+  var init = props.init;
+  var capRef = props.capRef || {};
+  var goalsRef = props.goalsRef || {};
+  if(!init) return null;
+
+  var cap = capRef[init.id] || null;
+  var possiblyTotal = cap ? cap.possiblyXS + cap.possiblyS + cap.possiblyM + cap.possiblyL + cap.possiblyXL : 0;
+
+  return (
+    <div style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+
+      {/* Close button overlay */}
+      <button onClick={props.onClose} style={{position:"absolute",top:14,right:18,border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1,zIndex:10}}>×</button>
+
+      {/* Shared identity block (spec §1) */}
+      <IdentityBlock
+        init={init}
+        goalsRef={goalsRef}
+        currentView="qpe"
+        onNavigateView={props.onNavigateView}
+      />
+
+      {/* QPE-specific sections below */}
+      <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
+
+        {/* Status across quarters timeline */}
+        <div style={{marginBottom:14,padding:"10px 12px",background:"#fafbfc",border:"1px solid #ececec",borderRadius:6}}>
+          <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:8}}>Status across quarters</div>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            {QPE_QUARTERS_HIST.map(function(q, i){
+              var h = init.history.find(function(x){return x.quarter === q;});
+              var s = h ? h.status : null;
+              var displayLabel = s;
+              var displayBg = s ? STATUS_CFG[s] && STATUS_CFG[s].bg : null;
+              var displayTx = s ? STATUS_CFG[s] && STATUS_CFG[s].tx : null;
+              if(s === "Proposed" && q === CYCLE.current){
+                if(init.isNew){
+                  displayLabel = "Proposed (New)"; displayBg = "#FEF5E7"; displayTx = "#9A6800";
+                } else {
+                  displayLabel = "Proposed (Ongoing)";
+                }
+              }
+              return (
+                <React.Fragment key={q}>
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontSize:9,color:"#aaa",marginBottom:3}}>{q}</div>
+                    {s ? <Chip bg={displayBg} tx={displayTx} size={9.5}>{displayLabel}</Chip> : <span style={{fontSize:9.5,color:"#ccc"}}>—</span>}
+                  </div>
+                  {i < QPE_QUARTERS_HIST.length - 1 && <span style={{color:"#ddd",fontSize:11}}>→</span>}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* CEO rank chip if applicable */}
+        {init.q2Rank != null && (
+          <div style={{marginBottom:14}}>
+            <Chip bg="#FEF5E7" tx="#9A6800" size={10}>★ CEO rank #{init.q2Rank} ({CYCLE.previousShort})</Chip>
+          </div>
+        )}
+
+        {/* Capacity signal preview */}
+        {cap ? (
+          <div style={{marginBottom:12,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600}}>Capacity signal — {CYCLE.current}</div>
+              <button onClick={function(){props.onNavigateView("capacity", init.id);}} style={{fontSize:10,padding:"3px 8px",border:"1px solid #C8DCF0",borderRadius:4,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>full view →</button>
+            </div>
+            <div style={{marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:11.5,fontWeight:700,color:qpeCiColor(cap.ciNum)}}>{cap.confidenceLabel || "—"}</span>
+                <span style={{fontSize:11,color:"#999"}}>{cap.performers} performer{cap.performers !== 1 ? "s" : ""}</span>
+              </div>
+              <div style={{height:7,borderRadius:4,background:"#f0f0f0",overflow:"hidden"}}>
+                <div style={{height:"100%",width:Math.round(cap.confidenceFactor*100)+"%",background:qpeCiColor(cap.ciNum),borderRadius:4,transition:"width .3s"}}/>
+              </div>
+              <div style={{fontSize:9.5,color:"#aaa",marginTop:3,textAlign:"right"}}>{Math.round(cap.confidenceFactor*100)}%</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"4px 10px",fontSize:11.5,alignItems:"center"}}>
+              {cap.committed > 0 && <>
+                <span style={{color:"#1E8449",fontWeight:600}}>✓</span>
+                <span style={{color:"#555"}}>Definitely committed</span>
+                <span style={{fontWeight:600,color:"#1E8449",textAlign:"right"}}>{cap.committed}</span>
+              </>}
+              {possiblyTotal > 0 && <>
+                <span style={{color:"#B7950B",fontWeight:600}}>~</span>
+                <span style={{color:"#555"}}>Possibly{" "}
+                  <span style={{fontSize:10,color:"#aaa"}}>
+                    {[
+                      cap.possiblyXS > 0 ? cap.possiblyXS+"×XS" : null,
+                      cap.possiblyS  > 0 ? cap.possiblyS +"×S"  : null,
+                      cap.possiblyM  > 0 ? cap.possiblyM +"×M"  : null,
+                      cap.possiblyL  > 0 ? cap.possiblyL +"×L"  : null,
+                      cap.possiblyXL > 0 ? cap.possiblyXL+"×XL" : null,
+                    ].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+                <span style={{fontWeight:600,color:"#B7950B",textAlign:"right"}}>{possiblyTotal}</span>
+              </>}
+              {cap.noCapacity > 0 && <>
+                <span style={{color:"#C0392B",fontWeight:600}}>✗</span>
+                <span style={{color:"#555"}}>No capacity remaining</span>
+                <span style={{fontWeight:600,color:"#C0392B",textAlign:"right"}}>{cap.noCapacity}</span>
+              </>}
+            </div>
+          </div>
+        ) : (
+          <div style={{marginBottom:12,padding:"10px 12px",borderRadius:6,background:"#fafbfc",border:"1px solid #ececec"}}>
+            <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:4}}>Capacity signal — {CYCLE.current}</div>
+            <div style={{fontSize:11.5,color:"#bbb",fontStyle:"italic"}}>No capacity data for this initiative yet.</div>
+          </div>
+        )}
+
+        {init.shortDesc && (
+          <div style={{marginBottom:12,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
+            <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:6}}>Summary</div>
+            <div style={{fontSize:12,color:"#444",lineHeight:1.5}}>{init.shortDesc}</div>
+          </div>
+        )}
+        {init.fullDesc && init.fullDesc !== init.shortDesc && (
+          <div style={{marginBottom:12,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
+            <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:6}}>Full description</div>
+            <div style={{fontSize:11.5,color:"#555",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{init.fullDesc}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Goal panel — opened by clicking a goal lane header.
+function QpeGoalPanel(props){
+  var gk = props.goalKey;
+  var allInits = props.allInitiatives;
+  var goalsRef = props.goalsRef || {};
+  if(!gk) return null;
+  var g = GOALS[gk];
+  if(!g) return null;
+  var ref = goalsRef[gk] || {};
+
+  var goalInits = allInits.filter(function(i){return i.goal === gk;});
+  var observedObjMap = {};
+  goalInits.forEach(function(i){
+    if(!i.obj) return;
+    if(!observedObjMap[i.obj]){
+      observedObjMap[i.obj] = {obj:i.obj, name:i.objName, ownersFromInits:{}, initCount:0};
+    }
+    observedObjMap[i.obj].initCount++;
+    if(i.objOwner) observedObjMap[i.obj].ownersFromInits[i.objOwner] = true;
+  });
+
+  var refObjMap = {};
+  (ref.objectives || []).forEach(function(o){ refObjMap[o.obj] = o; });
+
+  var allObjKeys = {};
+  Object.keys(refObjMap).forEach(function(k){ allObjKeys[k] = true; });
+  Object.keys(observedObjMap).forEach(function(k){ allObjKeys[k] = true; });
+
+  var objectives = Object.keys(allObjKeys).sort(function(a,b){
+    var aParts = a.split(".").map(Number);
+    var bParts = b.split(".").map(Number);
+    for(var i = 0; i < Math.max(aParts.length, bParts.length); i++){
+      var av = aParts[i] || 0, bv = bParts[i] || 0;
+      if(av !== bv) return av - bv;
+    }
+    return 0;
+  }).map(function(k){
+    var obs = observedObjMap[k];
+    var rf = refObjMap[k];
+    var owners = {};
+    if(rf && rf.owners) rf.owners.forEach(function(o){ owners[o] = true; });
+    if(obs) Object.keys(obs.ownersFromInits).forEach(function(o){ owners[o] = true; });
+    return {
+      obj: k,
+      name: (rf && rf.name) || (obs && obs.name) || "",
+      desc: rf ? rf.desc : "",
+      owners: Object.keys(owners),
+      initCount: obs ? obs.initCount : 0,
+      hasReference: !!rf,
+    };
+  });
+
+  return (
+    <div style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0,borderTop:"4px solid "+goalBorderColor(g)}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:goalBorderColor(g),fontWeight:700,marginBottom:4}}>Strategic Goal {g.num}</div>
+            <div style={{fontSize:17,fontWeight:700,lineHeight:1.25,color:"#111"}}>{ref.name || g.name}</div>
+          </div>
+          <button onClick={props.onClose} style={{border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+        </div>
+        <div style={{fontSize:11,color:"#888",marginTop:6}}>{goalInits.length} initiative{goalInits.length !== 1 ? "s" : ""} in this quarter · {objectives.length} objective{objectives.length !== 1 ? "s" : ""}</div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
+        <div style={{marginBottom:14,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
+          <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:6}}>Goal description</div>
+          {ref.desc ? <div style={{fontSize:12,color:"#444",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{ref.desc}</div> : <div style={{fontSize:11.5,color:"#bbb",fontStyle:"italic"}}>Not provided in Goals reference sheet.</div>}
+        </div>
+        <div style={{marginBottom:14,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
+          <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:6}}>Goal Owner</div>
+          {ref.owner ? <div style={{fontSize:12,color:"#444",fontWeight:500}}>{ref.owner}</div> : <div style={{fontSize:11.5,color:"#bbb",fontStyle:"italic"}}>Not provided in Goals reference sheet.</div>}
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:8}}>Objectives & owners</div>
+          {objectives.length === 0 ? <div style={{fontSize:11.5,color:"#bbb",fontStyle:"italic",padding:"8px 12px"}}>No objectives found.</div> : objectives.map(function(o){
+            return (
+              <div key={o.obj} style={{padding:"10px 12px",marginBottom:6,borderRadius:6,background:"#fff",border:"1px solid #ececec",borderLeft:"3px solid "+goalBorderColor(g)}}>
+                <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,marginBottom:4}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#222"}}>Objective {o.obj}{o.name ? ": "+o.name : ""}</div>
+                  <div style={{fontSize:10,color:o.initCount > 0 ? "#999" : "#ccc",flexShrink:0}}>{o.initCount} init</div>
+                </div>
+                {o.desc && <div style={{fontSize:11,color:"#666",marginTop:4,marginBottom:6,lineHeight:1.45}}>{o.desc}</div>}
+                <div style={{fontSize:10.5,color:"#666"}}>
+                  <span style={{color:"#aaa"}}>Owner{o.owners.length !== 1 ? "s" : ""}: </span>
+                  {o.owners.length > 0 ? o.owners.join(", ") : <span style={{color:"#bbb",fontStyle:"italic"}}>none assigned</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// List panel — opened by clicking a cycle story tile.
+function QpeListPanel(props){
+  if(!props.list) return null;
+  var list = props.list;
+  return (
+    <div style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:props.accent || "#999",fontWeight:700,marginBottom:4}}>{props.label}</div>
+            <div style={{fontSize:17,fontWeight:700,lineHeight:1.25,color:"#111"}}>{list.items.length} {list.items.length === 1 ? "initiative" : "initiatives"}</div>
+            {props.sublabel && <div style={{fontSize:11,color:"#888",marginTop:4}}>{props.sublabel}</div>}
+          </div>
+          <button onClick={props.onClose} style={{border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
+        {list.items.length === 0 ? <div style={{padding:"30px",textAlign:"center",color:"#bbb",fontSize:12,fontStyle:"italic"}}>No initiatives in this bucket.</div> : (function(){
+          var byGoal = {};
+          list.items.forEach(function(i){
+            if(!byGoal[i.goal]) byGoal[i.goal] = [];
+            byGoal[i.goal].push(i);
+          });
+          var goalKeys = Object.keys(byGoal).sort();
+          return goalKeys.map(function(gk){
+            var g = GOALS[gk];
+            var items = byGoal[gk];
+            return (
+              <div key={gk} style={{marginBottom:14}}>
+                <div style={{fontSize:10.5,fontWeight:700,color:goalBorderColor(g),marginBottom:6,textTransform:"uppercase",letterSpacing:.4,padding:"2px 4px"}}>
+                  Goal {g.num}: {g.name} <span style={{color:"#aaa",fontWeight:400,marginLeft:4}}>({items.length})</span>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {items.map(function(i){
+                    var sc = STATUS_CFG[i.status];
+                    return (
+                      <div key={i.id} onClick={function(){props.onItemDrill(i.id);}} style={{padding:"7px 10px",borderRadius:5,background:"#fff",border:"1px solid #ececec",cursor:"pointer",display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                        <span style={{width:7,height:7,borderRadius:"50%",background:sc?sc.dot:"#ccc",flexShrink:0}}/>
+                        <span style={{fontFamily:"monospace",fontSize:10,color:"#aaa",flexShrink:0}}>{i.id}</span>
+                        <span style={{fontSize:11.5,color:"#333",flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={i.name}>{i.name}</span>
+                        {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          });
+        })()}
+      </div>
+    </div>
+  );
+}
+
+// Initiative card — used in the New Proposed gallery.
+function QpeInitCard(props){
+  var i = props.init;
+  var g = GOALS[i.goal];
+  return (
+    <div onClick={function(){props.onDrill(i.id);}} style={{padding:"10px 12px",borderRadius:8,background:"#fff",border:"1px solid #ececec",cursor:"pointer",display:"flex",flexDirection:"column",gap:6,minWidth:0,transition:"transform .12s,box-shadow .12s"}}
+      onMouseEnter={function(e){e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.boxShadow="0 3px 12px rgba(0,0,0,.07)";}}
+      onMouseLeave={function(e){e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flexWrap:"wrap"}}>
+        <Chip bg={g.color+"22"} tx={goalBorderColor(g)} size={9.5}>G{g.num}</Chip>
+        <span style={{fontFamily:"monospace",fontSize:9.5,color:"#aaa"}}>{i.id}</span>
+        {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={9}>NEW</Chip>}
+      </div>
+      <div style={{fontSize:12.5,fontWeight:600,color:"#222",lineHeight:1.35}}>{i.name}</div>
+      {i.shortDesc && <div style={{fontSize:10.5,color:"#888",lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{i.shortDesc}</div>}
+      <div style={{fontSize:10,color:"#aaa",marginTop:"auto"}}>{i.objOwner || "no owner"}</div>
+    </div>
+  );
+}
+
+// Main content area for the QPE view: cycle story tiles, new proposals, goal lanes.
+function QpeMainView(props){
+  var initiatives = props.initiatives, onDrill = props.onDrill, onGoalDrill = props.onGoalDrill, goalFocus = props.goalFocus;
+  var goalsRef = props.goalsRef || {};
+
+  var newOnes = initiatives.filter(function(i){return i.isNew;});
+
+  var cycleStory = useMemo(function(){
+    var lastCommittedIds = {}, lastBackloggedIds = {};
+    initiatives.forEach(function(i){
+      var q2H = i.history.find(function(h){return h.quarter === CYCLE.previous;});
+      if(q2H && q2H.status === "Committed") lastCommittedIds[i.id] = true;
+      if(q2H && q2H.status === "Backlogged") lastBackloggedIds[i.id] = true;
+    });
+    var lastCommitted = Object.keys(lastCommittedIds);
+    var completed = initiatives.filter(function(i){return lastCommittedIds[i.id] && i.status === "Complete";});
+    var backlogged = initiatives.filter(function(i){return lastCommittedIds[i.id] && i.status === "Backlogged";});
+    var ongoing = initiatives.filter(function(i){return lastCommittedIds[i.id] && (i.status === "Proposed" || i.status === "Committed") && !i.isNew;});
+    var newProposed = initiatives.filter(function(i){
+      if(!i.isNew) return false;
+      if(i.status !== "Proposed") return false;
+      var hadPriorHistory = i.history.some(function(h){return h.quarter !== CYCLE.current && h.status;});
+      return !hadPriorHistory;
+    });
+    var revived = initiatives.filter(function(i){return lastBackloggedIds[i.id] && (i.status === "Proposed" || i.status === "Committed");});
+    return {lastCommittedTotal: lastCommitted.length, completed:completed, backlogged:backlogged, ongoing:ongoing, newProposed:newProposed, revived:revived};
+  },[initiatives]);
+
+  var goalLanes = {};
+  Object.keys(GOALS).forEach(function(k){ goalLanes[k] = []; });
+  initiatives.forEach(function(i){ if(goalLanes[i.goal]) goalLanes[i.goal].push(i); });
+  function compareIds(a, b){
+    var ap = String(a.id || "").split(".").map(Number);
+    var bp = String(b.id || "").split(".").map(Number);
+    for(var i = 0; i < Math.max(ap.length, bp.length); i++){
+      var av = ap[i] || 0, bv = bp[i] || 0;
+      if(av !== bv) return av - bv;
+    }
+    return 0;
+  }
+  Object.keys(goalLanes).forEach(function(k){ goalLanes[k].sort(function(a, b){ return compareIds(a, b); }); });
+
+  return (
+    <div style={{padding:"20px 28px 32px"}}>
+      {/* Cycle story */}
+      <section style={{marginBottom:24}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"stretch"}}>
+          <div style={{display:"flex",gap:8,flex:"1 1 320px",minWidth:280}}>
+            <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:4,flex:"0 1 160px",background:"#fafbfc",border:"1px solid #ececec",borderRadius:10}}>
+              <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,display:"flex",alignItems:"center"}}>
+                <span style={{fontSize:14,fontWeight:600,lineHeight:1,marginRight:4,color:"#999"}}>←</span>Outcomes from last cycle
+              </div>
+              <div style={{display:"flex",gap:10,marginTop:4}}>
+                <div><div style={{fontSize:9.5,color:"#999"}}>Completed</div><div style={{fontSize:16,fontWeight:700,color:"#1E8449",lineHeight:1.1}}>{cycleStory.completed.length}</div></div>
+                <div><div style={{fontSize:9.5,color:"#999"}}>Backlogged</div><div style={{fontSize:16,fontWeight:700,color:STATUS_CFG.Backlogged.tx,lineHeight:1.1}}>{cycleStory.backlogged.length}</div></div>
+              </div>
+              <div style={{fontSize:9.5,color:"#aaa",marginTop:"auto",paddingTop:4}}>of {cycleStory.lastCommittedTotal} committed</div>
+            </div>
+            <div style={{padding:"10px 14px 12px",display:"flex",flexDirection:"column",gap:6,flex:"1 1 200px",background:"#fff",border:"1px solid #ececec",borderRadius:10}}>
+              <div onClick={function(){props.onListDrill({label:"In "+CYCLE.current+" planning",items:cycleStory.ongoing.concat(cycleStory.newProposed).concat(cycleStory.revived),sublabel:cycleStory.ongoing.length+" ongoing + "+cycleStory.newProposed.length+" new"+(cycleStory.revived.length?" + "+cycleStory.revived.length+" revived":""),accent:"#666"});}} style={{cursor:"pointer",margin:"-4px -6px",padding:"4px 6px",borderRadius:5}}>
+                <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#2471A3",fontWeight:600,display:"flex",alignItems:"center"}}>
+                  <span style={{fontSize:14,fontWeight:600,lineHeight:1,marginRight:4,color:"#2471A3"}}>→</span>Candidates for this cycle
+                </div>
+                <div style={{fontSize:24,fontWeight:700,lineHeight:1.1,marginTop:2,color:"#111"}}>{cycleStory.ongoing.length + cycleStory.newProposed.length + cycleStory.revived.length}</div>
+                <div style={{fontSize:10,color:"#666",marginTop:1}}>{cycleStory.ongoing.length} ongoing + {cycleStory.newProposed.length} new{cycleStory.revived.length?" + "+cycleStory.revived.length+" revived":""}</div>
+              </div>
+              <div style={{marginTop:2}}>
+                <div style={{display:"flex",height:16,borderRadius:3,overflow:"hidden",border:"1px solid #ececec"}}>
+                  {[{k:"Ongoing",n:cycleStory.ongoing.length,color:STATUS_CFG.Proposed.dot},{k:"New",n:cycleStory.newProposed.length,color:"#F4D03F"},{k:"Revived",n:cycleStory.revived.length,color:"#6C3483"}].map(function(seg){
+                    if(seg.n === 0) return null;
+                    return <div key={seg.k} style={{flexGrow:seg.n,background:seg.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9.5,color:"#fff",fontWeight:600}}>{seg.n}</div>;
+                  })}
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:4,fontSize:9.5,color:"#666",flexWrap:"wrap"}}>
+                  {[{k:"Ongoing",n:cycleStory.ongoing.length,color:STATUS_CFG.Proposed.dot},{k:"New",n:cycleStory.newProposed.length,color:"#F4D03F"},{k:"Revived",n:cycleStory.revived.length,color:"#6C3483"}].map(function(seg){
+                    if(seg.n === 0) return null;
+                    return <span key={seg.k} style={{display:"inline-flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:2,background:seg.color}}/>{seg.k}</span>;
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,flex:"2 1 540px",flexWrap:"wrap",alignItems:"stretch"}}>
+            {[
+              {label:"✓ Completed",     items:cycleStory.completed,  sublabel:"of "+cycleStory.lastCommittedTotal+" committed last cycle", accent:"#117A65", count:cycleStory.completed.length,  color:"#117A65", bg:"#fafbfc", suffix:"last cycle"},
+              {label:"↓ Backlogged",    items:cycleStory.backlogged, sublabel:"of "+cycleStory.lastCommittedTotal+" committed last cycle", accent:"#7D6608", count:cycleStory.backlogged.length, color:"#7D6608", bg:"#fafbfc", suffix:"last cycle"},
+            ].map(function(t){
+              return (
+                <div key={t.label} onClick={function(){props.onListDrill({label:t.label,items:t.items,sublabel:t.sublabel,accent:t.accent});}} style={{padding:"8px 12px",flex:"1 1 110px",display:"flex",flexDirection:"column",gap:1,justifyContent:"center",cursor:"pointer",background:t.bg,border:"1px solid #ececec",borderRadius:10}}>
+                  <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:.4,color:"#999",fontWeight:600}}>{t.label}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:t.color,lineHeight:1.1}}>{t.count}</div>
+                  <div style={{fontSize:9.5,color:"#aaa"}}>{t.suffix}</div>
+                </div>
+              );
+            })}
+            <div style={{width:1,background:"#ddd",margin:"4px 4px",flexShrink:0}}/>
+            {[
+              {label:"↻ Ongoing",       items:cycleStory.ongoing,    sublabel:"carried forward from last cycle", accent:"#7D6608", count:cycleStory.ongoing.length,    color:"#7D6608", bg:"#fff",     bdr:"#ececec", suffix:"this cycle"},
+              {label:"+ New Proposed",  items:cycleStory.newProposed,sublabel:"added this cycle",                accent:"#9A6800", count:cycleStory.newProposed.length,color:"#9A6800", bg:"#FEF5E7",  bdr:"#F4D03F", suffix:"this cycle"},
+              {label:"↻ Revived",       items:cycleStory.revived,    sublabel:"pulled back to active",           accent:"#6C3483", count:cycleStory.revived.length,    color:"#6C3483", bg:"#fff",     bdr:"#ececec", suffix:"this cycle"},
+            ].map(function(t){
+              return (
+                <div key={t.label} onClick={function(){props.onListDrill({label:t.label,items:t.items,sublabel:t.sublabel,accent:t.accent});}} style={{padding:"8px 12px",flex:"1 1 110px",display:"flex",flexDirection:"column",gap:1,justifyContent:"center",cursor:"pointer",background:t.bg,border:"1px solid "+t.bdr,borderRadius:10}}>
+                  <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:.4,color:t.bg==="#FEF5E7"?"#9A6800":"#999",fontWeight:600}}>{t.label}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:t.color,lineHeight:1.1}}>{t.count}</div>
+                  <div style={{fontSize:9.5,color:t.bg==="#FEF5E7"?"#9A6800":"#aaa"}}>{t.suffix}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* New proposals */}
+      {newOnes.length > 0 && (
+        <section style={{marginBottom:24}}>
+          <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:.8,color:"#9A6800",fontWeight:700,marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+            <span>📥 New Proposed Initiatives This Cycle</span>
+            <span style={{flex:1,height:1,background:"#F4D03F"}}/>
+            <span style={{fontSize:10,color:"#aaa",letterSpacing:0,fontWeight:400,textTransform:"none"}}>({newOnes.length})</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))",gap:10}}>
+            {newOnes.map(function(n){return <QpeInitCard key={n.id} init={n} onDrill={onDrill}/>;})}
+          </div>
+        </section>
+      )}
+
+      {/* Goal lanes */}
+      <section style={{marginBottom:24}}>
+        <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:.8,color:"#666",fontWeight:700,marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+          <span>Initiatives by Goal — {CYCLE.current}</span>
+          <span style={{flex:1,height:1,background:"#ddd"}}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3, minmax(0, 1fr))",gap:12}}>
+          {Object.keys(GOALS).filter(function(k){return goalFocus === "all" || goalFocus === k;}).map(function(k){
+            var g = GOALS[k];
+            var lane = goalLanes[k];
+            var goalOwner = goalsRef[k] && goalsRef[k].owner;
+            return (
+              <div key={k} style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10}}>
+                <div onClick={function(){onGoalDrill(k);}} style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:8,gap:6,borderBottom:"2px solid "+goalBorderColor(g)+"55",paddingBottom:6,cursor:"pointer"}}>
+                  <div style={{display:"flex",alignItems:"baseline",gap:8,minWidth:0,flex:1}}>
+                    <span style={{fontSize:13,fontWeight:700,color:goalBorderColor(g),whiteSpace:"nowrap"}}>Goal {g.num}: {g.short}</span>
+                    {goalOwner && <span style={{fontSize:10.5,color:"#999",fontWeight:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>· {goalOwner}</span>}
+                  </div>
+                  <span style={{fontSize:10.5,color:"#999",flexShrink:0}}>{lane.length}</span>
+                </div>
+                {lane.length === 0 ? <div style={{fontSize:11,color:"#bbb",fontStyle:"italic",padding:"6px 0"}}>None in this quarter.</div> : (
+                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    {lane.map(function(i){
+                      return (
+                        <div key={i.id} onClick={function(){onDrill(i.id);}} style={{padding:"6px 8px",margin:"0 -8px",borderRadius:5,cursor:"pointer",display:"flex",alignItems:"center",gap:6,minWidth:0,transition:"background .12s"}}
+                          onMouseEnter={function(e){e.currentTarget.style.background="#f7fafd";}}
+                          onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}>
+                          <span style={{fontSize:12,color:"#333",flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={i.name}>{i.name} <span style={{fontFamily:"monospace",fontSize:9.5,color:"#aaa",fontWeight:400}}>{i.id}</span></span>
+                          {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
+                          {i.status === "Backlogged" && <Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx} size={8.5}>Backlogged</Chip>}
+                          {i.status === "Complete" && <Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx} size={8.5}>Completed</Chip>}
+                          {i.status === "Not Funded" && <Chip bg={STATUS_CFG["Not Funded"].bg} tx={STATUS_CFG["Not Funded"].tx} size={8.5}>Not Funded</Chip>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// The QPE view component. Renders inside the unified shell. Reads CSV text
+// from the shared data loader; runs its own filters and drill-down state.
+function QpeView(props){
+  var data = props.data;
+  var [goalFocus, setGoalFocus] = useState("all");
+  var [fStatus, setFStatus] = useState([]);
+  var [newOnly, setNewOnly] = useState(false);
+  var [search, setSearch] = useState("");
+  var [drill, setDrill] = useState(null);
+  var [goalDrill, setGoalDrill] = useState(null);
+  var [listDrill, setListDrill] = useState(null);
+
+  // Parse CSVs from the shared loader's cache.
+  var initiatives = useMemo(function(){
+    if(data.state.status !== "ready") return [];
+    return qpeNormalizePlanning(data.state.planningCsv);
+  }, [data.state.status, data.state.planningCsv]);
+
+  var goalsRef = useMemo(function(){
+    if(data.state.status !== "ready") return {};
+    return qpeNormalizeGoals(data.state.goalsCsv);
+  }, [data.state.status, data.state.goalsCsv]);
+
+  var capRef = useMemo(function(){
+    if(data.state.status !== "ready") return {};
+    return qpeNormalizeCapacity(data.state.capacityCsv);
+  }, [data.state.status, data.state.capacityCsv]);
+
+  // If a sibling view navigated here with a selectedInitiativeId, open that drill-down.
+  useEffect(function(){
+    if(props.selectedInitiativeId && initiatives.length > 0){
+      var match = initiatives.find(function(i){return i.id === props.selectedInitiativeId;});
+      if(match) setDrill(match.id);
+    }
+  }, [props.selectedInitiativeId, initiatives]);
+
+  var filtered = useMemo(function(){
+    return initiatives.filter(function(i){
+      if(goalFocus !== "all" && i.goal !== goalFocus) return false;
+      if(fStatus.length && fStatus.indexOf(i.status) === -1) return false;
+      if(newOnly && !i.isNew) return false;
+      if(search){
+        var q = search.toLowerCase();
+        if(i.name.toLowerCase().indexOf(q) === -1 && i.id.toLowerCase().indexOf(q) === -1 && (i.objOwner||"").toLowerCase().indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  },[initiatives, goalFocus, fStatus, newOnly, search]);
+
+  var availableStatuses = useMemo(function(){
+    return QPE_STATUS_KEYS.filter(function(s){return initiatives.some(function(i){return i.status === s;});});
+  },[initiatives]);
+
+  var drillInit = drill ? initiatives.find(function(x){return x.id === drill;}) : null;
+  var anyFilter = goalFocus !== "all" || fStatus.length || newOnly || search;
+  function clearAll(){ setGoalFocus("all"); setFStatus([]); setNewOnly(false); setSearch(""); }
+
+  if(data.state.status === "loading"){
+    return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"#999",fontSize:13}}>Loading planning data…</div>;
+  }
+  if(data.state.status === "error"){
+    return (
+      <div style={{flex:1,padding:40,color:"#7B241C"}}>
+        <div style={{padding:"20px 24px",background:"#FDECEA",border:"1px solid #E6B0AA",borderRadius:8,maxWidth:600,margin:"0 auto"}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:8}}>Could not load planning data</div>
+          <div style={{fontSize:12,marginBottom:12}}>{data.state.error}</div>
+          <button onClick={data.reload} style={{padding:"6px 14px",border:"1px solid #C0392B",background:"#fff",color:"#C0392B",borderRadius:6,cursor:"pointer",fontWeight:600}}>Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+
+      {/* View-specific subheader */}
+      <div style={{padding:"10px 24px",background:"#fafafa",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#333"}}>Quarterly Planning</span>
+          <span style={{fontSize:11,color:"#999"}}>· {filtered.length} of {initiatives.length} initiatives</span>
+        </div>
+      </div>
+
+      {/* Filter toolbar */}
+      <div style={{padding:"10px 24px",background:"#fff",borderBottom:"1px solid #ececec",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
+        <span style={{fontSize:10,textTransform:"uppercase",color:"#aaa",fontWeight:700,letterSpacing:.05,marginRight:2}}>Focus</span>
+        <select value={goalFocus} onChange={function(e){setGoalFocus(e.target.value);}} style={{fontSize:11.5,padding:"5px 10px",border:"1px solid "+(goalFocus !== "all" ? "#2471A3" : "#dcdcdc"),borderRadius:18,background:goalFocus !== "all" ? "#EBF5FB" : "#fff",color:goalFocus !== "all" ? "#2471A3" : "#555",fontWeight:goalFocus !== "all" ? 600 : 400}}>
+          <option value="all">All Goals</option>
+          {Object.keys(GOALS).map(function(k){var g = GOALS[k]; return <option key={k} value={k}>Goal {g.num}: {g.name}</option>;})}
+        </select>
+        <MultiSelect label="Status" options={availableStatuses} selected={fStatus} onChange={setFStatus}/>
+        <button onClick={function(){setNewOnly(!newOnly);}} title="Show only initiatives flagged NEW in the planning sheet" style={{fontSize:11.5,padding:"5px 11px",border:"1px solid "+(newOnly ? "#9A6800" : "#dcdcdc"),borderRadius:18,background:newOnly ? "#FEF5E7" : "#fff",color:newOnly ? "#9A6800" : "#555",cursor:"pointer",fontWeight:newOnly ? 600 : 400}}>📥 New only</button>
+        {anyFilter && <button onClick={clearAll} style={{fontSize:11.5,background:"none",border:"none",color:"#C0392B",cursor:"pointer",fontWeight:500}}>✕ Clear</button>}
+        <div style={{flex:1}}/>
+        <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}}/>
+      </div>
+
+      {/* Main content */}
+      <div style={{flex:1,overflow:"auto"}}>
+        <QpeMainView
+          initiatives={filtered}
+          onDrill={setDrill}
+          onGoalDrill={setGoalDrill}
+          onListDrill={setListDrill}
+          goalFocus={goalFocus}
+          goalsRef={goalsRef}
+        />
+      </div>
+
+      {drillInit && <QpeDrillPanel init={drillInit} capRef={capRef} goalsRef={goalsRef} onNavigateView={props.onNavigateView} onClose={function(){setDrill(null);}}/>}
+      {goalDrill && <QpeGoalPanel goalKey={goalDrill} allInitiatives={initiatives} goalsRef={goalsRef} onClose={function(){setGoalDrill(null);}}/>}
+      {listDrill && <QpeListPanel list={listDrill} label={listDrill.label} sublabel={listDrill.sublabel} accent={listDrill.accent} onItemDrill={function(id){setListDrill(null); setDrill(id);}} onClose={function(){setListDrill(null);}}/>}
+
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PLACEHOLDER VIEW — used for views not yet ported (Roadmap, Capacity)
    ════════════════════════════════════════════════════════════════════════════ */
 
 function PlaceholderView(props){
@@ -604,7 +1401,7 @@ function App(){
       </div>
 
       {/* Active view */}
-      {activeView === "qpe"      && <PlaceholderView {...viewProps} title="Quarterly Planning Dashboard" step="Step 2"/>}
+      {activeView === "qpe"      && <QpeView {...viewProps}/>}
       {activeView === "roadmap"  && <PlaceholderView {...viewProps} title="Program Roadmap" step="Step 4"/>}
       {activeView === "capacity" && <PlaceholderView {...viewProps} title="Capacity Planning Dashboard" step="Step 3"/>}
 
