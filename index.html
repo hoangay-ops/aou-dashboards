@@ -429,17 +429,44 @@ function IdentityBlock(props){
   var goalDetail = formatGoalDetail(init.goal, gRef.name, gRef.owner || init.goalOwner);
   var objDetail = formatObjectiveDetail(init.obj, init.objName, init.objOwner);
 
+  // Defensive: ensure these are strings, not objects. If any upstream parser
+  // returns the wrong type, fall back to a safe placeholder rather than
+  // crashing the entire panel with React error #31.
+  function asStr(v){
+    if(v == null) return "";
+    var t = typeof v;
+    if(t === "string" || t === "number" || t === "boolean") return String(v);
+    try { return JSON.stringify(v); } catch(e){ return ""; }
+  }
+
+  // DIAGNOSTIC: log identity block inputs to spot bad data shapes.
+  try {
+    console.log("[IdentityBlock debug]", {
+      currentView: props.currentView,
+      initId: init.id,
+      initName: init.name,
+      initGoal: init.goal,
+      initObj: init.obj,
+      initStatus: init.status,
+      initPoc: init.poc,
+      goalDetailType: typeof goalDetail,
+      objDetailType: typeof objDetail,
+      goalDetail: goalDetail,
+      objDetail: objDetail,
+    });
+  } catch(e){}
+
   return (
     <div style={{padding:"14px 18px",background:"#fafbfc",borderBottom:"1px solid #ececec"}}>
       {/* Row 1: ID + NEW badge + close button area is the parent's responsibility */}
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
-        <span style={{fontFamily:"monospace",fontSize:11,color:"#999"}}>{init.id}</span>
+        <span style={{fontFamily:"monospace",fontSize:11,color:"#999"}}>{asStr(init.id)}</span>
         {init.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={9}>NEW</Chip>}
       </div>
 
       {/* Row 2: Name */}
       <div style={{fontSize:15,fontWeight:700,lineHeight:1.3,color:"#111",marginBottom:10}}>
-        {init.name}
+        {asStr(init.name)}
       </div>
 
       {/* Row 3: Chips — Goal, Status, Project Type */}
@@ -450,9 +477,9 @@ function IdentityBlock(props){
 
       {/* Row 4: Details grid (Goal, Objective, POC) */}
       <div style={{display:"flex",flexDirection:"column",gap:4,fontSize:11.5,lineHeight:1.45,marginBottom:10}}>
-        <div style={{color:"#333"}}><strong>Goal:</strong> {goalDetail}</div>
-        <div style={{color:"#333"}}><strong>Objective:</strong> {objDetail}</div>
-        <div style={{color:"#333"}}><strong>POC / PdM:</strong> {init.poc || "—"}</div>
+        <div style={{color:"#333"}}><strong>Goal:</strong> {asStr(goalDetail)}</div>
+        <div style={{color:"#333"}}><strong>Objective:</strong> {asStr(objDetail)}</div>
+        <div style={{color:"#333"}}><strong>POC / PdM:</strong> {asStr(init.poc) || "—"}</div>
       </div>
 
       {/* Row 5: Cross-view navigation + PSI link */}
