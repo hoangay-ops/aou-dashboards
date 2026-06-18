@@ -867,9 +867,13 @@ function QpeDrillPanel(props){
 
   return (
     <div data-drilldown-panel="qpe" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
-        onNavigateView={props.onNavigateView}
-        psiUrlMap={props.psiUrlMap}
-      />
+  <IdentityBlock
+    init={init}
+    goalsRef={goalsRef}
+    currentView="qpe"
+    onNavigateView={props.onNavigateView}
+    psiUrlMap={props.psiUrlMap}
+  />
 
       {/* QPE-specific sections below */}
       <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
@@ -1315,43 +1319,44 @@ function QpeMainView(props){
                 {lane.length === 0 ? <div style={{fontSize:11,color:"#bbb",fontStyle:"italic",padding:"6px 0"}}>None in this quarter.</div> : (
                   <div style={{display:"flex",flexDirection:"column",gap:3}}>
                     {lane.map(function(i){
-                      return (
-                        <div key={i.id} onClick={function(){onDrill(i.id);}} style={{padding:"6px 8px",margin:"0 -8px",borderRadius:5,cursor:"pointer",display:"flex",alignItems:"center",gap:6,minWidth:0,transition:"background .12s"}}
-                          onMouseEnter={function(e){e.currentTarget.style.background="#f7fafd";}}
-                          onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}>
-                          <span
-  style={{fontSize:12,color:"#333",flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}
-  title={renderText(i.name)}
->
-  {renderText(i.name)}
-  {" "}
-  <span style={{fontFamily:"monospace",fontSize:9.5,color:"#aaa",fontWeight:400}}>
-    {renderText(i.id)}
-  </span>
-</span>
-                          {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
-                          {i.status === "Backlogged" && <Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx} size={8.5}>Backlogged</Chip>}
-                          {i.status === "Complete" && <Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx} size={8.5}>Completed</Chip>}
-                          {i.status === "Not Funded" && <Chip bg={STATUS_CFG["Not Funded"].bg} tx={STATUS_CFG["Not Funded"].tx} size={8.5}>Not Funded</Chip>}
-                        console.log("QPE lane item", {
-  id: i && i.id,
-  name: i && i.name,
-  nameType: typeof (i && i.name),
-  item: i
-});
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
+  console.log("QPE lane item", {
+    id: i && i.id,
+    name: i && i.name,
+    nameType: typeof (i && i.name),
+    item: i
+  });
+
+  {lane.map(function(i){
+  console.log("QPE lane item", {
+    id: i && i.id,
+    name: i && i.name,
+    nameType: typeof (i && i.name),
+    item: i
+  });
+
+  return (
+    <div key={i.id} onClick={function(){onDrill(i.id);}} style={{padding:"6px 8px",margin:"0 -8px",borderRadius:5,cursor:"pointer",display:"flex",alignItems:"center",gap:6,minWidth:0,transition:"background .12s"}}
+      onMouseEnter={function(e){e.currentTarget.style.background="#f7fafd";}}
+      onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}>
+
+      <span
+        style={{fontSize:12,color:"#333",flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}
+        title={renderText(i.name)}
+      >
+        {renderText(i.name)}
+        {" "}
+        <span style={{fontFamily:"monospace",fontSize:9.5,color:"#aaa",fontWeight:400}}>
+          {renderText(i.id)}
+        </span>
+      </span>
+
+      {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
+      {i.status === "Backlogged" && <Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx} size={8.5}>Backlogged</Chip>}
+      {i.status === "Complete" && <Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx} size={8.5}>Completed</Chip>}
+      {i.status === "Not Funded" && <Chip bg={STATUS_CFG["Not Funded"].bg} tx={STATUS_CFG["Not Funded"].tx} size={8.5}>Not Funded</Chip>}
     </div>
   );
-}
+})}
 
 // The QPE view component. Renders inside the unified shell. Reads CSV text
 // from the shared data loader; runs its own filters and drill-down state.
