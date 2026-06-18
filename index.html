@@ -46,6 +46,7 @@ const CYCLE = {
 const PLANNING_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=0&single=true&output=csv";
 const GOALS_CSV_URL    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=1157686184&single=true&output=csv";
 const CAPACITY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRBMoz4Ih_0AkKsm0qr1xfM4tkppaQqFJVWJ8IE6tmSO99MmxUOW8scahb2ljMapz_lPO_4Q_EaKDR8/pub?gid=910516878&single=true&output=csv";
+const PSI_URLS_CSV     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRdDL-Nc8nz2_SPI_ZbsCxkF5rP3T4nkJLVYKEwRIl-RDAuy3l0Dscs-jLpfIhqCdHgBwIZARQ1zqoG/pub?gid=263432553&single=true&output=csv";
 
 // The Roadmap pulls from a separate sheet — keep its URL builders here too.
 const ROADMAP_SHEET_ID  = "1UAVBmkBC1l-Pnp5UMe_72FTjv_03Xwe9fcgu5nHPcQg";
@@ -206,9 +207,36 @@ function addCacheBuster(url){
   return url + (url.indexOf("?") === -1 ? "?" : "&") + "_=" + Date.now();
 }
 
+// When a drill-down opens, the panel is position:fixed and pins to the top
+// of the iframe viewport. If the user has scrolled down inside a view,
+// they can't see it. Scroll the viewport (and the nearest scrollable parent
+// of the trigger, if there is one) back to the top so the panel is visible.
+// Works inside Google Sites iframes as well as standalone.
+function scrollViewportToTop(){
+  try {
+    // Scroll the window itself (covers most cases).
+    window.scrollTo({top: 0, left: 0, behavior: "auto"});
+    // Scroll the documentElement and body (older browsers / specific quirks).
+    if(document.documentElement) document.documentElement.scrollTop = 0;
+    if(document.body) document.body.scrollTop = 0;
+    // Scroll all scrollable containers inside the app root back to the top.
+    // Drill-downs live at fixed position so this won't affect them.
+    var root = document.getElementById("root");
+    if(root){
+      var scrollers = root.querySelectorAll("[data-scroll-container]");
+      for(var i = 0; i < scrollers.length; i++){
+        scrollers[i].scrollTop = 0;
+      }
+    }
+  } catch(e){ /* iframe sandbox or other restriction — fail silently */ }
+}
+
 // PSI URL builder — slug fallback used when no explicit URL is known.
-function buildPsiUrl(init){
+function buildPsiUrl(init, psiUrlMap){
   if(!init || !init.id) return "";
+  // Check canonical PSI URL map first (loaded from the PSI URLs sheet).
+  if(psiUrlMap && psiUrlMap[init.id]) return psiUrlMap[init.id];
+  // Slug fallback: id + name converted to a URL slug.
   var idPart = String(init.id).replace(/\./g, "-");
   var namePart = String(init.name || "")
     .toLowerCase()
@@ -218,6 +246,31 @@ function buildPsiUrl(init){
     .replace(/^-+|-+$/g, "");
   var slug = namePart ? (idPart + "-" + namePart) : idPart;
   return "https://sites.google.com/nih.gov/aou-project-status-inventory/psi-home/initiatives/" + slug;
+}
+
+// Parse the PSI URLs sheet — robust to common column name variations.
+function parsePsiUrlMap(csvText){
+  if(!csvText) return {};
+  var rows = parseCSV(csvText);
+  if(!rows.length) return {};
+  // Find header row — look for any combination of "id" and "url"/"link"/"psi".
+  var hi = 0;
+  for(var i = 0; i < Math.min(5, rows.length); i++){
+    var n = rows[i].map(normHeader);
+    var hasId = n.some(function(h){return h === "id" || h === "initiative id" || h === "init id";});
+    var hasUrl = n.some(function(h){return h.indexOf("url") !== -1 || h.indexOf("link") !== -1 || h.indexOf("psi") !== -1;});
+    if(hasId && hasUrl){ hi = i; break; }
+  }
+  var header = rows[hi];
+  var body = rows.slice(hi + 1);
+  var get = makeRowAccessor(header);
+  var map = {};
+  body.forEach(function(row){
+    var id = get(row, "ID", "Initiative ID", "Init ID");
+    var url = get(row, "PSI URL", "URL", "Link", "PSI Link", "PSI URL Link", "Page URL");
+    if(id && url) map[String(id).trim()] = String(url).trim();
+  });
+  return map;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -398,7 +451,7 @@ function IdentityBlock(props){
             View in Capacity →
           </button>
         )}
-        <a href={buildPsiUrl(init)} target="_blank" rel="noopener noreferrer" style={Object.assign({}, navLinkStyle, {textDecoration:"none",display:"inline-flex",alignItems:"center"})}>
+        <a href={buildPsiUrl(init, props.psiUrlMap)} target="_blank" rel="noopener noreferrer" style={Object.assign({}, navLinkStyle, {textDecoration:"none",display:"inline-flex",alignItems:"center"})}>
           View in PSI ↗
         </a>
       </div>
@@ -427,6 +480,7 @@ function useDataLoader(){
     goalsCsv: "",
     capacityCsv: "",
     roadmapCsv: "",           // roadmap-specific sheet (fourth CSV)
+    psiUrlsCsv: "",           // canonical PSI URL lookup (fifth CSV)
   });
 
   var load = useCallback(function(){
@@ -458,6 +512,7 @@ function useDataLoader(){
       fetchText(GOALS_CSV_URL),
       fetchText(CAPACITY_CSV_URL).catch(function(){return "";}),
       fetchRoadmapCsv(),
+      fetchText(PSI_URLS_CSV).catch(function(){return "";}),
     ])
       .then(function(results){
         setState({
@@ -468,6 +523,7 @@ function useDataLoader(){
           goalsCsv: results[1],
           capacityCsv: results[2],
           roadmapCsv: results[3],
+          psiUrlsCsv: results[4],
         });
       })
       .catch(function(err){
@@ -779,6 +835,7 @@ function QpeDrillPanel(props){
         goalsRef={goalsRef}
         currentView="qpe"
         onNavigateView={props.onNavigateView}
+        psiUrlMap={props.psiUrlMap}
       />
 
       {/* QPE-specific sections below */}
@@ -1241,10 +1298,17 @@ function QpeView(props){
   var [fStatus, setFStatus] = useState([]);
   var [newOnly, setNewOnly] = useState(false);
   var [search, setSearch] = useState("");
-  var [drill, setDrill] = useState(null);
-  var [goalDrill, setGoalDrill] = useState(null);
-  var [listDrill, setListDrill] = useState(null);
+  var [drillRaw, setDrillRaw] = useState(null);
+  var [goalDrillRaw, setGoalDrillRaw] = useState(null);
+  var [listDrillRaw, setListDrillRaw] = useState(null);
   var [guideOpen, setGuideOpen] = useState(false);
+
+  // Wrap drill-down setters to also scroll the viewport to the top so the
+  // user can see the panel even if they've scrolled down within the view.
+  function setDrill(v){ setDrillRaw(v); if(v) scrollViewportToTop(); }
+  function setGoalDrill(v){ setGoalDrillRaw(v); if(v) scrollViewportToTop(); }
+  function setListDrill(v){ setListDrillRaw(v); if(v) scrollViewportToTop(); }
+  var drill = drillRaw, goalDrill = goalDrillRaw, listDrill = listDrillRaw;
 
   // Parse CSVs from the shared loader's cache.
   var initiatives = useMemo(function(){
@@ -1344,7 +1408,7 @@ function QpeView(props){
         />
       </div>
 
-      {drillInit && <QpeDrillPanel init={drillInit} capRef={capRef} goalsRef={goalsRef} onNavigateView={props.onNavigateView} onClose={function(){setDrill(null);}}/>}
+      {drillInit && <QpeDrillPanel init={drillInit} capRef={capRef} goalsRef={goalsRef} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap} onClose={function(){setDrill(null);}}/>}
       {goalDrill && <QpeGoalPanel goalKey={goalDrill} allInitiatives={initiatives} goalsRef={goalsRef} onClose={function(){setGoalDrill(null);}}/>}
       {listDrill && <QpeListPanel list={listDrill} label={listDrill.label} sublabel={listDrill.sublabel} accent={listDrill.accent} onItemDrill={function(id){setListDrill(null); setDrill(id);}} onClose={function(){setListDrill(null);}}/>}
 
@@ -1949,6 +2013,7 @@ function CapDrillPanel(props){
           goalsRef={goalsRef}
           currentView="capacity"
           onNavigateView={props.onNavigateView}
+          psiUrlMap={props.psiUrlMap}
         />
 
         <div style={{flex:1,overflowY:"auto"}}>
@@ -2038,7 +2103,7 @@ function CapDrillPanel(props){
 
 function CapacityView(props){
   var data = props.data;
-  var [drill, setDrill] = useState(null);
+  var [drillRaw, setDrillRaw] = useState(null);
   var [goalFilter, setGoalFilter] = useState("all");
   var [tierFilter, setTierFilter] = useState("all");
   var [search, setSearch] = useState("");
@@ -2046,6 +2111,10 @@ function CapacityView(props){
   var [sortState, setSortState] = useState({col:"ci", dir:"asc"});
   var [bannerDismissed, setBannerDismissed] = useState(false);
   var [guideOpen, setGuideOpen] = useState(false);
+
+  // Wrap drill setter to scroll viewport to the top when a drill opens.
+  function setDrill(v){ setDrillRaw(v); if(v) scrollViewportToTop(); }
+  var drill = drillRaw;
 
   var initiatives = useMemo(function(){
     if(data.state.status !== "ready") return [];
@@ -2361,7 +2430,7 @@ function CapacityView(props){
         </div>
       </div>
 
-      {drillItem && <CapDrillPanel item={drillItem} goalsRef={goalsRef} onNavigateView={props.onNavigateView} onClose={function(){setDrill(null);}}/>}
+      {drillItem && <CapDrillPanel item={drillItem} goalsRef={goalsRef} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap} onClose={function(){setDrill(null);}}/>}
 
       <ViewGuide
         open={guideOpen}
@@ -3020,11 +3089,16 @@ function RoadmapView(props){
   var [fGoals, setFGoals] = useState([]);
   var [fTypes, setFTypes] = useState([]);
   var [fAwardees, setFAwardees] = useState([]);
-  var [expanded, setExpanded] = useState(null);
+  var [expandedRaw, setExpandedRaw] = useState(null);
   var [tooltip, setTooltip] = useState(null);
   var [depMode, setDepMode] = useState(false);
   var [depFocus, setDepFocus] = useState(null);
   var [guideOpen, setGuideOpen] = useState(false);
+
+  // Wrap the drill-down setter to scroll the viewport to the top when an
+  // initiative is selected for inspection.
+  function setExpanded(v){ setExpandedRaw(v); if(v) scrollViewportToTop(); }
+  var expanded = expandedRaw;
 
   // Parse roadmap rows from cached CSV + enrich with planning sheet data.
   useEffect(function(){
@@ -3035,6 +3109,44 @@ function RoadmapView(props){
     var enriched = rmEnrichRows(normalized, planningLookup);
     setItems(enriched);
   }, [data.state.status, data.state.roadmapCsv, data.state.planningCsv]);
+
+  // Parse capacity data — used to flag initiatives with no-remaining-capacity
+  // teams on the Roadmap timeline. Same parser the Capacity view uses, so
+  // the underlying signal is identical.
+  var capData = useMemo(function(){
+    if(data.state.status !== "ready") return {};
+    return capParseCapacity(data.state.capacityCsv);
+  }, [data.state.status, data.state.capacityCsv]);
+
+  // Helper: returns the list of teams flagging "No Capacity" for an initiative,
+  // or null if there are none / the initiative has no capacity row.
+  // Tries the raw initiative ID first; if not found, tries a normalized lookup
+  // (some sheets store IDs with trailing whitespace or version suffixes).
+  function noCapacityTeams(initId){
+    if(!initId) return null;
+    var cap = capData[initId] || capData[String(initId).trim()];
+    if(!cap || !cap.teams) return null;
+    var flagging = cap.teams.filter(function(t){return t.staff === "N";});
+    return flagging.length > 0 ? flagging : null;
+  }
+
+  // Debug counters — shown as a small badge in the slim status bar so the
+  // Program Lead can confirm the flag data is loading and matching.
+  // Counts: initiatives with capacity rows / initiatives with at least one
+  // no-capacity team flagged.
+  var flagDebug = useMemo(function(){
+    var capIds = Object.keys(capData).filter(function(k){return k.indexOf("_") !== 0;});
+    var matched = 0, flagged = 0;
+    (items || []).forEach(function(it){
+      if(it.cat !== "initiative") return;
+      if(capData[it.id]){
+        matched++;
+        var teams = noCapacityTeams(it.id);
+        if(teams) flagged++;
+      }
+    });
+    return {capRows: capIds.length, matched: matched, flagged: flagged};
+  }, [items, capData]);
 
   // If a sibling view navigated here, open that drill-down.
   useEffect(function(){
@@ -3209,7 +3321,26 @@ function RoadmapView(props){
 
       {/* Slim count bar */}
       <div style={{padding:"6px 24px",borderBottom:"1px solid #ebebeb",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#fafafa"}}>
-        <span style={{fontSize:11,color:"#aaa"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:11,color:"#aaa"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
+          <a
+            href="https://sites.google.com/nih.gov/aou-program-roadmap/home"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open the standalone program roadmap site in a new tab (separate from the dashboards Google Site)"
+            style={{fontSize:11,padding:"3px 9px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",textDecoration:"none",fontWeight:500,whiteSpace:"nowrap"}}>
+            Open full Roadmap ↗
+          </a>
+          {/* Debug badge: helps confirm capacity flag matching is working.
+              Shown only when capacity data is present so it doesn't add noise
+              for users on instances without capacity data loaded. */}
+          {flagDebug.capRows > 0 && (
+            <span title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged}
+              style={{fontSize:10,padding:"3px 8px",borderRadius:10,background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:600,cursor:"help"}}>
+              🚧 {flagDebug.flagged} flagged · {flagDebug.matched}/{allInit.length} matched
+            </span>
+          )}
+        </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
           <button onClick={rmPrintRoadmap} title="Print the currently filtered roadmap" style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>Print</button>
@@ -3385,6 +3516,7 @@ function RoadmapView(props){
                     )}
                     {gItems.map(function(item){
                       var role = depRole(item.id), rs = rmDepRelationStyle(role);
+                      var noCapTeams = noCapacityTeams(item.id);
                       return (
                         <div key={item.id} onClick={function(){selectInitiative(item.id);}}
                           style={{
@@ -3401,6 +3533,14 @@ function RoadmapView(props){
                           {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7,fontWeight:600,padding:"1px 3px",borderRadius:3,background:"#f0f0f0",color:"#ccc",border:"1px solid #e8e8e8"}}>TBD</span>}
                           {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8"}}>↔</span>}
                           {rs.label && <span title="Dependency role" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border}}>{rs.label}</span>}
+                          {noCapTeams && (
+                            <span
+                              onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
+                              title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
+                              style={{fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:2,marginTop:1}}>
+                              🚧 {noCapTeams.length}
+                            </span>
+                          )}
                           <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:1}}>
                             <span style={{fontSize:11.5,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={item.name}>{item.name}</span>
                             <span style={{fontSize:9,color:"#bbb",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
@@ -3508,6 +3648,7 @@ function RoadmapView(props){
                 goalsRef={{}}
                 currentView="roadmap"
                 onNavigateView={props.onNavigateView}
+                psiUrlMap={props.psiUrlMap}
               />
 
               <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
@@ -3520,6 +3661,32 @@ function RoadmapView(props){
                     return cfg ? <span key={a} style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:cfg.bg,color:cfg.tx}}>{cfg.label}</span> : null;
                   })}
                 </div>
+
+                {/* Capacity flag — visible when one or more teams flagged no capacity */}
+                {(function(){
+                  var teams = noCapacityTeams(expItem.id);
+                  if(!teams) return null;
+                  return (
+                    <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#FDECEA",border:"1px solid #E6B0AA",borderLeft:"3px solid #C0392B"}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                        <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#922b21",fontWeight:800}}>🚧 No Capacity Flag ({teams.length})</div>
+                        <button onClick={function(){props.onNavigateView("capacity", expItem.id);}} style={{fontSize:10,padding:"3px 8px",border:"1px solid #C0392B",borderRadius:4,background:"#fff",color:"#922b21",cursor:"pointer",fontWeight:600}}>view in Capacity →</button>
+                      </div>
+                      <div style={{fontSize:11.5,color:"#7B241C",lineHeight:1.5}}>
+                        {teams.length === 1 ? "1 team has" : teams.length + " teams have"} flagged "No Capacity Remaining" for this initiative:
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:2,marginTop:6}}>
+                        {teams.map(function(t, i){
+                          return <div key={i} style={{fontSize:11,padding:"3px 7px",background:"#fff",border:"1px solid #E6B0AA",borderRadius:4,color:"#7B241C",display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{color:"#C0392B",fontWeight:800}}>✗</span>
+                            <span style={{fontWeight:600,flex:1}}>{t.name}</span>
+                            {t.notes && <span style={{fontSize:10,color:"#888",fontStyle:"italic"}}>{t.notes}</span>}
+                          </div>;
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Dependency impact block */}
                 {(rmRelatedDepIds(expItem).length > 0 || (depGraph.downstream[expItem.id] && depGraph.downstream[expItem.id].length) || expItem.dependencyType || expItem.requiredBy || expItem.impactIfLate || expItem.mitigationNotes) && (
@@ -3638,6 +3805,8 @@ function RoadmapView(props){
             body:<>Inspector details show the shared identity block (Goal, Objective, POC), plus Roadmap-only Audience, Start, End, and Awardees.</>},
           {icon:"⚠", title:"Risks & TBD", color:"#C0392B", bg:"#FFF4F2",
             body:<><span style={{color:"#C0392B",fontWeight:800}}>⚠</span> Risks are highlighted in red. <strong>TBD</strong> items have no start, end, or quarter and can be hidden with the Hide TBD toggle.</>},
+          {icon:"🚧", title:"No-capacity flag", color:"#922b21", bg:"#FDECEA",
+            body:<>A <strong style={{background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",padding:"1px 4px",borderRadius:3,fontSize:9.5}}>🚧 N</strong> badge next to a row means N team(s) flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the badge to jump directly to that initiative on the Capacity tab.</>},
           {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
             body:<>The <strong>Print</strong> button opens a clean, landscape-sized snapshot of the currently filtered roadmap in a new tab — ready to print or save as PDF.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
@@ -3730,6 +3899,12 @@ function App(){
   var [selectedInitiativeId, setSelectedInitiativeId] = useState(null);
   var data = useDataLoader();
 
+  // Parse the PSI URL lookup once, shared across all views.
+  var psiUrlMap = useMemo(function(){
+    if(data.state.status !== "ready") return {};
+    return parsePsiUrlMap(data.state.psiUrlsCsv);
+  }, [data.state.status, data.state.psiUrlsCsv]);
+
   // Cross-view navigation: switch tabs and remember which initiative to focus.
   // Views will read selectedInitiativeId from props and auto-open the drill-down.
   var selectInitiative = useCallback(function(targetView, initiativeId){
@@ -3749,6 +3924,7 @@ function App(){
     selectedInitiativeId: selectedInitiativeId,
     onNavigateView: selectInitiative,
     currentView: activeView,
+    psiUrlMap: psiUrlMap,
   };
 
   return (
