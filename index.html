@@ -1385,14 +1385,6 @@ function QpeView(props){
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
-      {/* View-specific subheader */}
-      <div style={{padding:"6px 24px",background:"#fafafa",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:13,fontWeight:700,color:"#333"}}>Quarterly Planning</span>
-          <span style={{fontSize:11,color:"#999"}}>· {filtered.length} of {initiatives.length} initiatives</span>
-        </div>
-      </div>
-
       {/* Filter toolbar */}
       <div style={{padding:"10px 24px",background:"#fff",borderBottom:"1px solid #ececec",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
         <span style={{fontSize:10,textTransform:"uppercase",color:"#aaa",fontWeight:700,letterSpacing:.05,marginRight:2}}>Focus</span>
@@ -1405,6 +1397,7 @@ function QpeView(props){
         {anyFilter && <button onClick={clearAll} style={{fontSize:11.5,background:"none",border:"none",color:"#C0392B",cursor:"pointer",fontWeight:500}}>✕ Clear</button>}
         <div style={{flex:1}}/>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}}/>
+        <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,background:"#fff",border:"1px solid #ececec",color:"#888"}}><strong style={{color:"#333"}}>{filtered.length}</strong> of {initiatives.length}</span>
         <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
       </div>
 
@@ -2455,8 +2448,6 @@ function CapacityView(props){
             body:<>The Goal Health card in the side panel shows on-track/monitor/risk/no-data counts per goal. Click any goal to filter the table to just that goal.</>},
           {icon:"🚧", title:"Capacity Bottlenecks", color:"#C0392B", bg:"#FFF4F2",
             body:<>Shows which teams are most often flagging "No Capacity" relative to their total assigned initiatives. Top 7 teams shown; higher bars mean more conflicts to resolve.</>},
-          {icon:"⚠️", title:"Mismatch banner", color:"#7B241C", bg:"#FDECEA",
-            body:<>If a red banner appears at the top of this view, the sheet's team column order has drifted from this dashboard's expected order. <strong>Drill-down attribution will be incorrect until fixed.</strong></>},
           {icon:"🏷", title:"Drill-down details", color:"#607080", bg:"#fff",
             body:<>Drill-downs lead with the shared identity block, then show the Confidence Index, performer responses grouped by staffing tier (with Q3 and 3-quarter LOE), the weighting reference, and the summary.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#185FA5", bg:"#F4FAFF",
@@ -3326,31 +3317,6 @@ function RoadmapView(props){
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#fff"}}>
 
-      {/* Slim count bar */}
-      <div style={{padding:"6px 24px",borderBottom:"1px solid #ebebeb",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#fafafa"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:11,color:"#aaa"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
-          {/* Debug badge: helps confirm capacity flag matching is working.
-              Shown only when capacity data is present so it doesn't add noise
-              for users on instances without capacity data loaded. */}
-          {flagDebug.capRows > 0 && (
-            <span title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged}
-              style={{fontSize:10,padding:"3px 8px",borderRadius:10,background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:600,cursor:"help"}}>
-              🚧 {flagDebug.flagged} flagged · {flagDebug.matched}/{allInit.length} matched
-            </span>
-          )}
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
-          <button onClick={rmPrintRoadmap} title="Print the currently filtered roadmap" style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>Print</button>
-          <button onClick={reset} style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #e0e0e0",borderRadius:6,background:"#fff",cursor:"pointer"}}>Reset</button>
-          <span style={{fontSize:11,color:"#aaa"}}>Showing</span>
-          <span style={{fontSize:13,fontWeight:700,color:"#333"}}>{filtered.length}</span>
-          <span style={{fontSize:11,color:"#aaa"}}>of {allInit.length} initiatives</span>
-          {isAnyFilterActive && <span style={{fontSize:10,color:"#C0392B",marginLeft:4}}>↓ {allInit.length - filtered.length} hidden by filter</span>}
-        </div>
-      </div>
-
       {/* Toolbar */}
       <div style={{padding:"8px 24px",borderBottom:"1px solid #ebebeb",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",background:"#fff"}}>
 
@@ -3427,8 +3393,18 @@ function RoadmapView(props){
           <RmTog on={showLeg} onClick={function(){setShowLeg(!showLeg);}}>Legend</RmTog>
         </div>
 
-        <div style={{marginLeft:"auto"}}>
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+          {flagDebug.capRows > 0 && (
+            <span title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged}
+              style={{fontSize:10,padding:"3px 8px",borderRadius:10,background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:600,cursor:"help"}}>
+              🚧 {flagDebug.flagged} flagged
+            </span>
+          )}
+          <button onClick={rmPrintRoadmap} title="Print the currently filtered roadmap" style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>Print</button>
+          <button onClick={reset} style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #e0e0e0",borderRadius:6,background:"#fff",cursor:"pointer"}}>Reset</button>
           <input style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}} placeholder="🔍  Search…" value={search} onChange={function(e){setSearch(e.target.value);}}/>
+          <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,background:"#fff",border:"1px solid #ececec",color:"#888"}}><strong style={{color:"#333"}}>{filtered.length}</strong> of {allInit.length}</span>
+          <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
         </div>
       </div>
 
@@ -3985,19 +3961,25 @@ function App(){
 
 function ErrorBoundary(props){
   React.Component.call(this, props);
-  this.state = {err: null};
+  this.state = {err: null, info: null};
 }
 ErrorBoundary.prototype = Object.create(React.Component.prototype);
 ErrorBoundary.prototype.constructor = ErrorBoundary;
-ErrorBoundary.prototype.componentDidCatch = function(err){ this.setState({err: err}); };
+ErrorBoundary.prototype.componentDidCatch = function(err, info){ this.setState({err: err, info: info}); };
 ErrorBoundary.prototype.render = function(){
   if(this.state.err){
     var self = this;
+    var err = this.state.err;
+    var info = this.state.info;
     return React.createElement("div", {style:{padding:40,fontFamily:"monospace",fontSize:12,color:"#C0392B",background:"#FDECEA",margin:20,borderRadius:8,border:"1px solid #E6B0AA"}},
       React.createElement("div", {style:{fontSize:14,fontWeight:700,marginBottom:10}}, "Something broke rendering this view"),
-      React.createElement("div", {style:{marginBottom:10}}, String(this.state.err.message || this.state.err)),
+      React.createElement("div", {style:{marginBottom:10}}, String(err.message || err)),
+      info && info.componentStack && React.createElement("details", {style:{marginBottom:10,fontSize:10,whiteSpace:"pre-wrap",background:"#fff",padding:8,borderRadius:4,maxHeight:300,overflow:"auto"}},
+        React.createElement("summary", {style:{cursor:"pointer",fontWeight:600}}, "Component stack"),
+        info.componentStack
+      ),
       React.createElement("button", {
-        onClick: function(){ self.setState({err: null}); },
+        onClick: function(){ self.setState({err: null, info: null}); },
         style: {marginTop:12,padding:"6px 14px",border:"1px solid #C0392B",borderRadius:6,background:"#fff",color:"#C0392B",cursor:"pointer",fontWeight:600}
       }, "Reset view")
     );
