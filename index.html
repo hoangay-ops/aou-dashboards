@@ -1326,14 +1326,6 @@ function QpeMainView(props){
     item: i
   });
 
-  {lane.map(function(i){
-  console.log("QPE lane item", {
-    id: i && i.id,
-    name: i && i.name,
-    nameType: typeof (i && i.name),
-    item: i
-  });
-
   return (
     <div key={i.id} onClick={function(){onDrill(i.id);}} style={{padding:"6px 8px",margin:"0 -8px",borderRadius:5,cursor:"pointer",display:"flex",alignItems:"center",gap:6,minWidth:0,transition:"background .12s"}}
       onMouseEnter={function(e){e.currentTarget.style.background="#f7fafd";}}
@@ -1357,7 +1349,16 @@ function QpeMainView(props){
     </div>
   );
 })}
-
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
 // The QPE view component. Renders inside the unified shell. Reads CSV text
 // from the shared data loader; runs its own filters and drill-down state.
 function QpeView(props){
