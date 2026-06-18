@@ -209,26 +209,42 @@ function addCacheBuster(url){
 
 // When a drill-down opens, the panel is position:fixed and pins to the top
 // of the iframe viewport. If the user has scrolled down inside a view,
-// they can't see it. Scroll the viewport (and the nearest scrollable parent
-// of the trigger, if there is one) back to the top so the panel is visible.
-// Works inside Google Sites iframes as well as standalone.
+// they can't see it. This walks every scrollable container in the app and
+// scrolls them all to the top, so wherever the user clicked, the fixed
+// drill-down panel becomes visible.
+//
+// Implementation note: the original version of this helper looked only for
+// elements marked with [data-scroll-container], but no element was actually
+// tagged, so it was a no-op. This version walks every overflow:auto/scroll
+// element under #root — works in all three views without per-view tagging.
 function scrollViewportToTop(){
   try {
-    // Scroll the window itself (covers most cases).
+    // Scroll the window itself (in case the app isn't pinned to viewport height).
     window.scrollTo({top: 0, left: 0, behavior: "auto"});
-    // Scroll the documentElement and body (older browsers / specific quirks).
     if(document.documentElement) document.documentElement.scrollTop = 0;
     if(document.body) document.body.scrollTop = 0;
-    // Scroll all scrollable containers inside the app root back to the top.
-    // Drill-downs live at fixed position so this won't affect them.
+
+    // Walk every element under #root, scroll any that's actually scrollable.
+    // We can't trust class names because the three views differ; just check
+    // the computed style at runtime.
     var root = document.getElementById("root");
-    if(root){
-      var scrollers = root.querySelectorAll("[data-scroll-container]");
-      for(var i = 0; i < scrollers.length; i++){
-        scrollers[i].scrollTop = 0;
+    if(!root) return;
+    var nodes = root.querySelectorAll("*");
+    for(var i = 0; i < nodes.length; i++){
+      var n = nodes[i];
+      // Skip the drill-down panel itself (and anything inside it) — those
+      // should keep their own scroll position so users can scroll the panel
+      // body normally.
+      if(n.closest && n.closest("[data-drilldown-panel]")) continue;
+      // Skip elements that aren't actually scrollable.
+      if(n.scrollHeight <= n.clientHeight) continue;
+      var cs = window.getComputedStyle(n);
+      var overflowY = cs.overflowY;
+      if(overflowY === "auto" || overflowY === "scroll"){
+        n.scrollTop = 0;
       }
     }
-  } catch(e){ /* iframe sandbox or other restriction — fail silently */ }
+  } catch(e){ /* fail silently — sandbox restrictions in some embed contexts */ }
 }
 
 // PSI URL builder — slug fallback used when no explicit URL is known.
@@ -824,16 +840,7 @@ function QpeDrillPanel(props){
   var possiblyTotal = cap ? cap.possiblyXS + cap.possiblyS + cap.possiblyM + cap.possiblyL + cap.possiblyXL : 0;
 
   return (
-    <div style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
-
-      {/* Close button overlay */}
-      <button onClick={props.onClose} style={{position:"absolute",top:14,right:18,border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1,zIndex:10}}>×</button>
-
-      {/* Shared identity block (spec §1) */}
-      <IdentityBlock
-        init={init}
-        goalsRef={goalsRef}
-        currentView="qpe"
+    <div data-drilldown-panel="qpe" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
         onNavigateView={props.onNavigateView}
         psiUrlMap={props.psiUrlMap}
       />
@@ -1000,7 +1007,7 @@ function QpeGoalPanel(props){
   });
 
   return (
-    <div style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+    <div data-drilldown-panel="qpe-goal" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
       <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0,borderTop:"4px solid "+goalBorderColor(g)}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
           <div style={{flex:1,minWidth:0}}>
@@ -1048,7 +1055,7 @@ function QpeListPanel(props){
   if(!props.list) return null;
   var list = props.list;
   return (
-    <div style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+    <div data-drilldown-panel="qpe-list" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
       <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
           <div style={{flex:1,minWidth:0}}>
@@ -2001,7 +2008,7 @@ function CapDrillPanel(props){
   }
 
   return (
-    <div style={{position:"fixed",inset:0,zIndex:900,display:"flex",justifyContent:"flex-end"}}>
+    <div data-drilldown-panel="capacity" style={{position:"fixed",inset:0,zIndex:900,display:"flex",justifyContent:"flex-end"}}>
       <div onClick={props.onClose} style={{flex:1,background:"rgba(0,0,0,.22)"}}/>
       <div style={{width:440,maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",display:"flex",flexDirection:"column",overflow:"hidden",position:"relative"}}>
 
@@ -3323,14 +3330,6 @@ function RoadmapView(props){
       <div style={{padding:"6px 24px",borderBottom:"1px solid #ebebeb",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#fafafa"}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:11,color:"#aaa"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
-          <a
-            href="https://sites.google.com/nih.gov/aou-program-roadmap/home"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open the standalone program roadmap site in a new tab (separate from the dashboards Google Site)"
-            style={{fontSize:11,padding:"3px 9px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",textDecoration:"none",fontWeight:500,whiteSpace:"nowrap"}}>
-            Open full Roadmap ↗
-          </a>
           {/* Debug badge: helps confirm capacity flag matching is working.
               Shown only when capacity data is present so it doesn't add noise
               for users on instances without capacity data loaded. */}
