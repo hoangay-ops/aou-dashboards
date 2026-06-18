@@ -1364,7 +1364,7 @@ function QpeView(props){
   },[initiatives]);
 
   var drillInit = drill ? initiatives.find(function(x){return x.id === drill;}) : null;
-  var anyFilter = goalFocus !== "all" || fStatus.length || newOnly || search;
+  var anyFilter = goalFocus !== "all" || fStatus.length > 0 || newOnly || (search !== "" && search !== null);
   function clearAll(){ setGoalFocus("all"); setFStatus([]); setNewOnly(false); setSearch(""); }
 
   if(data.state.status === "loading"){
@@ -2359,7 +2359,7 @@ function CapacityView(props){
         <MultiSelect label="Performer" options={CAP_TEAMS} selected={teamFilter} onChange={setTeamFilter}/>
         <CapAwardeeShortcut label="DRC" groupTeams={CAP_TEAMS.filter(function(t){return t.indexOf("DRC") === 0;})} selected={teamFilter} onChange={setTeamFilter}/>
         <CapAwardeeShortcut label="PPSC" groupTeams={CAP_TEAMS.filter(function(t){return t.indexOf("PPSC") === 0;})} selected={teamFilter} onChange={setTeamFilter}/>
-        {(search || goalFilter !== "all" || tierFilter !== "all" || teamFilter.length) &&
+        {(search || goalFilter !== "all" || tierFilter !== "all" || teamFilter.length > 0) &&
           <button onClick={function(){setSearch(""); setGoalFilter("all"); setTierFilter("all"); setTeamFilter([]);}}
             style={{fontSize:11.5,background:"none",border:"none",color:"#C0392B",cursor:"pointer",fontWeight:600}}>✕ Clear</button>}
         <div style={{flex:1}}/>
