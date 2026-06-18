@@ -208,35 +208,31 @@ function addCacheBuster(url){
 }
 
 // When a drill-down opens, the panel is position:fixed and pins to the top
-// of the iframe viewport. If the user has scrolled down inside a view,
-// they can't see it. This walks every scrollable container in the app and
-// scrolls them all to the top, so wherever the user clicked, the fixed
-// drill-down panel becomes visible.
+// of the iframe viewport. The user may have:
+//   (a) scrolled within the iframe (window.scrollY > 0) — reset that
+//   (b) scrolled the parent Google Site page so the iframe is partially or
+//       fully below the fold — ask the parent to scroll the iframe back
+//       into view by calling scrollIntoView on the app root, which works
+//       across same-origin and cross-origin boundaries (browsers honor it
+//       even when the iframe can't directly read parent scroll state).
 //
-// Implementation note: the original version of this helper looked only for
-// elements marked with [data-scroll-container], but no element was actually
-// tagged, so it was a no-op. This version walks every overflow:auto/scroll
-// element under #root — works in all three views without per-view tagging.
+// Also resets the scroll position of every scrollable container under
+// #root so the drill-down is visible from any starting position.
 function scrollViewportToTop(){
   try {
-    // Scroll the window itself (in case the app isn't pinned to viewport height).
+    // (a) Reset internal window scroll if it's actually scrollable.
     window.scrollTo({top: 0, left: 0, behavior: "auto"});
     if(document.documentElement) document.documentElement.scrollTop = 0;
     if(document.body) document.body.scrollTop = 0;
 
-    // Walk every element under #root, scroll any that's actually scrollable.
-    // We can't trust class names because the three views differ; just check
-    // the computed style at runtime.
+    // Walk every scrollable container under #root, reset each to top.
     var root = document.getElementById("root");
     if(!root) return;
     var nodes = root.querySelectorAll("*");
     for(var i = 0; i < nodes.length; i++){
       var n = nodes[i];
-      // Skip the drill-down panel itself (and anything inside it) — those
-      // should keep their own scroll position so users can scroll the panel
-      // body normally.
+      // Skip the drill-down panel itself — keep its own scroll position.
       if(n.closest && n.closest("[data-drilldown-panel]")) continue;
-      // Skip elements that aren't actually scrollable.
       if(n.scrollHeight <= n.clientHeight) continue;
       var cs = window.getComputedStyle(n);
       var overflowY = cs.overflowY;
@@ -244,7 +240,16 @@ function scrollViewportToTop(){
         n.scrollTop = 0;
       }
     }
-  } catch(e){ /* fail silently — sandbox restrictions in some embed contexts */ }
+
+    // (b) Ask any ancestor (including a parent Google Site page) to scroll
+    // the app root into view. scrollIntoView is allowed to traverse iframe
+    // boundaries when the script is inside the iframe — this is what makes
+    // the Google Site scroll back up so the drill-down is visible.
+    // Defer to next tick so the panel renders first.
+    setTimeout(function(){
+      try { root.scrollIntoView({block: "start", behavior: "smooth"}); } catch(e){}
+    }, 0);
+  } catch(e){ /* fail silently */ }
 }
 
 // PSI URL builder — slug fallback used when no explicit URL is known.
@@ -1381,12 +1386,11 @@ function QpeView(props){
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
       {/* View-specific subheader */}
-      <div style={{padding:"10px 24px",background:"#fafafa",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
+      <div style={{padding:"6px 24px",background:"#fafafa",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:13,fontWeight:700,color:"#333"}}>Quarterly Planning</span>
           <span style={{fontSize:11,color:"#999"}}>· {filtered.length} of {initiatives.length} initiatives</span>
         </div>
-        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
       </div>
 
       {/* Filter toolbar */}
@@ -1401,6 +1405,7 @@ function QpeView(props){
         {anyFilter && <button onClick={clearAll} style={{fontSize:11.5,background:"none",border:"none",color:"#C0392B",cursor:"pointer",fontWeight:500}}>✕ Clear</button>}
         <div style={{flex:1}}/>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}}/>
+        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
       </div>
 
       {/* Main content */}
@@ -1739,8 +1744,11 @@ function CapGoalHealthRows(props){
         return (
           <div key={k} onClick={function(){props.onGoalClick(k);}} style={{cursor:"pointer"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:3}}>
-              <div style={{fontSize:12.5,fontWeight:800,color:capGoalHealthColor(g),whiteSpace:"nowrap"}}>G{k} {g.short}</div>
-              <div style={{fontSize:11.5,color:"#4f5f6f",fontWeight:650,whiteSpace:"nowrap"}}>{h.high} on · {h.med} mon · {h.risk} risk</div>
+              <div style={{fontSize:11.5,fontWeight:600,color:"#333",whiteSpace:"nowrap"}}>
+                <span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:goalBorderColor(g),marginRight:6,verticalAlign:"middle"}}/>
+                G{k} {g.short}
+              </div>
+              <div style={{fontSize:10.5,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>{h.high} on · {h.med} mon · {h.risk} risk</div>
             </div>
             <div style={{height:7,borderRadius:4,overflow:"hidden",background:"#eef1f4",display:"flex"}}>
               {segs.map(function(s, i){return s.n > 0 ? <div key={i} style={{width:(s.n/total*100)+"%",background:s.c}}/> : null;})}
@@ -2291,15 +2299,6 @@ function CapacityView(props){
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
-      {/* View-specific subheader */}
-      <div style={{padding:"6px 24px",background:"#fafafa",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:13,fontWeight:700,color:"#333"}}>Capacity Planning</span>
-          <span style={{fontSize:11,color:"#999"}}>· {filtered.length} of {health.total} initiatives</span>
-        </div>
-        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
-      </div>
-
       {/* Mismatch banner — structural data quality alert per Project Instructions */}
       {!bannerDismissed && <CapMismatchBanner mismatches={mismatches} onDismiss={function(){setBannerDismissed(true);}}/>}
 
@@ -2366,6 +2365,7 @@ function CapacityView(props){
         <div style={{flex:1}}/>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍  Search…" style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}}/>
         <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,background:"#fff",border:"1px solid #ececec",color:"#888"}}><strong style={{color:"#333"}}>{filtered.length}</strong> of {health.total}</span>
+        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
       </div>
 
       {/* Workspace */}
@@ -3635,7 +3635,7 @@ function RoadmapView(props){
         </div>
 
         {/* Inspector panel */}
-        <div style={{width: expItem ? "440px" : "0px",minWidth: expItem ? "440px" : "0px",maxWidth:"42vw",borderLeft: expItem ? "1px solid #ececec" : "none",background:"#fafbfc",overflow:"hidden",transition:"width .2s,min-width .2s",flexShrink:0,display:"flex",flexDirection:"column"}}>
+        <div data-drilldown-panel="roadmap" style={{width: expItem ? "440px" : "0px",minWidth: expItem ? "440px" : "0px",maxWidth:"42vw",borderLeft: expItem ? "1px solid #ececec" : "none",background:"#fafbfc",overflow:"hidden",transition:"width .2s,min-width .2s",flexShrink:0,display:"flex",flexDirection:"column",position:"relative"}}>
           {expItem && (
             <>
               {/* Close button overlay (atop the identity block) */}
