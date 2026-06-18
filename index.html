@@ -721,6 +721,7 @@ function QpeDrillPanel(props){
 
   return (
     <div data-drilldown-panel="qpe" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+      <button onClick={props.onClose} title="Close initiative details" aria-label="Close initiative details" style={{position:"absolute",top:12,right:14,zIndex:20,width:28,height:28,border:"1px solid #dcdcdc",borderRadius:6,background:"#fff",color:"#777",fontSize:20,lineHeight:1,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",boxShadow:"0 1px 4px rgba(0,0,0,.08)"}}>×</button>
       <IdentityBlock init={init} goalsRef={goalsRef} currentView="qpe" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
       <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
         <div style={{marginBottom:14,padding:"10px 12px",background:"#fafbfc",border:"1px solid #ececec",borderRadius:6}}>
@@ -1723,7 +1724,7 @@ function CapTeamSummaryCard(props){
 function CapAwardeeShortcut(props){
   var label = props.label, groupTeams = props.groupTeams, selected = props.selected, onChange = props.onChange;
   var selectedInGroup = groupTeams.filter(function(t){return selected.indexOf(t) !== -1;});
-  var allOn = selectedInGroup.length === groupTeams.length;
+  var allOn = groupTeams.length > 0 && selectedInGroup.length === groupTeams.length;
   var someOn = selectedInGroup.length > 0 && !allOn;
   function toggle(){
     if(allOn) onChange(selected.filter(function(t){return groupTeams.indexOf(t) === -1;}));
@@ -2983,7 +2984,7 @@ function RoadmapView(props){
           {flagDebug.capRows > 0 && (
             <span title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged}
               style={{fontSize:10,padding:"3px 8px",borderRadius:10,background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:600,cursor:"help"}}>
-              🚧 {flagDebug.flagged} flagged · {flagDebug.matched}/{allInit.length} matched
+              🚧 {flagDebug.flagged} flagged
             </span>
           )}
         </div>
