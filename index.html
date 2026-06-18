@@ -483,6 +483,74 @@ function useDataLoader(){
   return {state: state, reload: load};
 }
 
+/* ─── Shared View Guide modal ──────────────────────────────────────────────
+   One reusable modal component used by all three views for their "How to use"
+   guide. Each view passes in its own title, intro, and array of guide cards.
+   Optional `launchGlossary` adds a callout linking to the launch glossary
+   (used by Roadmap).
+   ──────────────────────────────────────────────────────────────────────── */
+function ViewGuide(props){
+  if(!props.open) return null;
+  var cards = props.cards || [];
+  // Layout cards in a responsive grid — 2 columns on most viewports, 3 on wide.
+  return (
+    <div onClick={props.onClose} style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(20,30,45,.46)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"42px 20px 20px",overflowY:"auto"}}>
+      <div onClick={function(e){e.stopPropagation();}} style={{background:"#fff",borderRadius:12,padding:"22px 26px",maxWidth:920,width:"100%",boxShadow:"0 20px 50px rgba(0,0,0,.28)",border:"1px solid rgba(255,255,255,.35)"}}>
+
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:14}}>
+          <div>
+            <div style={{fontSize:17,fontWeight:800,color:"#111",lineHeight:1.2}}>{props.title}</div>
+            {props.intro && <div style={{fontSize:11.5,color:"#7b8792",marginTop:3}}>{props.intro}</div>}
+          </div>
+          <button onClick={props.onClose} aria-label="Close guide" style={{border:"none",background:"none",fontSize:24,color:"#aaa",cursor:"pointer",lineHeight:1,padding:0}}>×</button>
+        </div>
+
+        {props.launchGlossary && (
+          <div style={{marginBottom:14,padding:"10px 14px",border:"1px solid #C8DCF0",borderRadius:8,background:"#EBF5FB",fontSize:12,color:"#1F618D",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+            <span><strong>Launch glossary:</strong> definitions of launch types and milestone categories used on the roadmap.</span>
+            <a href={props.launchGlossary} target="_blank" rel="noopener noreferrer" style={{color:"#2471A3",fontWeight:700,textDecoration:"none",padding:"4px 10px",border:"1px solid #2471A3",borderRadius:6,whiteSpace:"nowrap"}}>Open glossary ↗</a>
+          </div>
+        )}
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12,marginBottom:cards.glossary ? 14 : 0}}>
+          {cards.map(function(card, i){
+            return (
+              <div key={i} style={{padding:"13px 14px",border:"1px solid #ebebeb",borderRadius:9,background:card.bg || "#fff",display:"flex",flexDirection:"column",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:18,lineHeight:1}}>{card.icon}</span>
+                  <div style={{fontSize:10.5,fontWeight:800,color:card.color || "#185FA5",textTransform:"uppercase",letterSpacing:.45}}>{card.title}</div>
+                </div>
+                <div style={{fontSize:11.5,color:"#5f6b75",lineHeight:1.45}}>{card.body}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {props.glossarySection && (
+          <div style={{padding:"13px 14px",border:"1px solid #ebebeb",borderRadius:9,background:"#fff",marginTop:14}}>
+            <div style={{fontSize:10.5,fontWeight:800,color:"#607080",textTransform:"uppercase",letterSpacing:.45,marginBottom:10}}>{props.glossarySection.title}</div>
+            {props.glossarySection.content}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+// Reusable "?" help button — used in each view's subheader.
+function HelpButton(props){
+  return (
+    <button onClick={props.onClick} title="How to use this dashboard" aria-label="How to use this dashboard" style={{
+      width:28, height:28, border:"1px solid #dcdcdc", borderRadius:6,
+      background: props.open ? "#EBF5FB" : "#fff",
+      color: props.open ? "#2471A3" : "#777",
+      cursor:"pointer", fontSize:13, fontWeight:800, lineHeight:1,
+      display:"inline-flex", alignItems:"center", justifyContent:"center", padding:0,
+    }}>?</button>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    QPE VIEW — ported from qpe_dashboard_patched.html (Step 2)
    ════════════════════════════════════════════════════════════════════════════ */
@@ -1176,6 +1244,7 @@ function QpeView(props){
   var [drill, setDrill] = useState(null);
   var [goalDrill, setGoalDrill] = useState(null);
   var [listDrill, setListDrill] = useState(null);
+  var [guideOpen, setGuideOpen] = useState(false);
 
   // Parse CSVs from the shared loader's cache.
   var initiatives = useMemo(function(){
@@ -1246,6 +1315,7 @@ function QpeView(props){
           <span style={{fontSize:13,fontWeight:700,color:"#333"}}>Quarterly Planning</span>
           <span style={{fontSize:11,color:"#999"}}>· {filtered.length} of {initiatives.length} initiatives</span>
         </div>
+        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
       </div>
 
       {/* Filter toolbar */}
@@ -1277,6 +1347,41 @@ function QpeView(props){
       {drillInit && <QpeDrillPanel init={drillInit} capRef={capRef} goalsRef={goalsRef} onNavigateView={props.onNavigateView} onClose={function(){setDrill(null);}}/>}
       {goalDrill && <QpeGoalPanel goalKey={goalDrill} allInitiatives={initiatives} goalsRef={goalsRef} onClose={function(){setGoalDrill(null);}}/>}
       {listDrill && <QpeListPanel list={listDrill} label={listDrill.label} sublabel={listDrill.sublabel} accent={listDrill.accent} onItemDrill={function(id){setListDrill(null); setDrill(id);}} onClose={function(){setListDrill(null);}}/>}
+
+      <ViewGuide
+        open={guideOpen}
+        onClose={function(){setGuideOpen(false);}}
+        title="How to use the Quarterly Planning Dashboard"
+        intro="Read the cycle story, inspect goal lanes, and open initiative details from one planning view."
+        cards={[
+          {icon:"↔", title:"Cycle story", color:"#2471A3", bg:"#F4FAFF",
+            body:<>The top tiles compare last-cycle outcomes with this-cycle candidates. Use <strong>Completed</strong>, <strong>Backlogged</strong>, <strong>Ongoing</strong>, <strong>New Proposed</strong>, and <strong>Revived</strong> tiles to open focused initiative lists.</>},
+          {icon:"🎯", title:"Goal lanes", color:"#6C3483", bg:"#FBF7FF",
+            body:<>Goal lanes group initiatives by strategic goal. Click a lane header to open goal details, including objectives and owners; click an initiative row to open its drill-down.</>},
+          {icon:"🔎", title:"Filters & search", color:"#117A65", bg:"#F4FFFB",
+            body:<>Use Focus, Status, New only, and Search to narrow the visible planning set. <strong>Clear</strong> resets the current filters.</>},
+          {icon:"📄", title:"Initiative drill-down", color:"#B3541E", bg:"#FFF8F2",
+            body:<>Drill-downs use the shared identity block: <strong>ID</strong>, <strong>Name</strong>, <strong>Goal</strong>, <strong>Objective</strong>, <strong>Status</strong>, and <strong>POC/PdM</strong>. Cross-view buttons jump to the same initiative in Roadmap or Capacity.</>},
+          {icon:"📊", title:"Capacity signal", color:"#1E8449", bg:"#F4FFF7",
+            body:<>The Capacity signal in each drill-down summarizes Confidence Index and performer counts. Click <strong>full view →</strong> to jump to that initiative on the Capacity tab.</>},
+          {icon:"⭐", title:"CEO ranks & NEW badges", color:"#9A6800", bg:"#FFF9EC",
+            body:<><strong>★ #N</strong> shows the CEO-ratified rank from the previous quarter. <strong>NEW</strong> badges mark initiatives proposed for the first time this cycle.</>},
+        ]}
+        glossarySection={{
+          title:"Status & badge glossary",
+          content: (
+            <div style={{display:"flex",flexWrap:"wrap",gap:"8px 12px",fontSize:11.2,color:"#606b75",lineHeight:1.4}}>
+              <span><Chip bg={STATUS_CFG.Committed.bg} tx={STATUS_CFG.Committed.tx}>Committed</Chip> approved for planning</span>
+              <span><Chip bg={STATUS_CFG.Proposed.bg} tx={STATUS_CFG.Proposed.tx}>Proposed</Chip> candidate</span>
+              <span><Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx}>Backlogged</Chip> deferred</span>
+              <span><Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx}>Complete</Chip> finished</span>
+              <span><Chip bg={STATUS_CFG["Not Funded"].bg} tx={STATUS_CFG["Not Funded"].tx}>Not Funded</Chip> not funded this cycle</span>
+              <span><Chip bg="#FEF5E7" tx="#9A6800">NEW</Chip> new proposed initiative</span>
+              <span><strong style={{color:"#9A6800"}}>★ #N</strong> CEO-ratified rank from {CYCLE.previous}</span>
+            </div>
+          )
+        }}
+      />
 
     </div>
   );
@@ -1940,6 +2045,7 @@ function CapacityView(props){
   var [teamFilter, setTeamFilter] = useState([]);
   var [sortState, setSortState] = useState({col:"ci", dir:"asc"});
   var [bannerDismissed, setBannerDismissed] = useState(false);
+  var [guideOpen, setGuideOpen] = useState(false);
 
   var initiatives = useMemo(function(){
     if(data.state.status !== "ready") return [];
@@ -2109,6 +2215,15 @@ function CapacityView(props){
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
+      {/* View-specific subheader */}
+      <div style={{padding:"6px 24px",background:"#fafafa",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#333"}}>Capacity Planning</span>
+          <span style={{fontSize:11,color:"#999"}}>· {filtered.length} of {health.total} initiatives</span>
+        </div>
+        <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
+      </div>
+
       {/* Mismatch banner — structural data quality alert per Project Instructions */}
       {!bannerDismissed && <CapMismatchBanner mismatches={mismatches} onDismiss={function(){setBannerDismissed(true);}}/>}
 
@@ -2247,6 +2362,43 @@ function CapacityView(props){
       </div>
 
       {drillItem && <CapDrillPanel item={drillItem} goalsRef={goalsRef} onNavigateView={props.onNavigateView} onClose={function(){setDrill(null);}}/>}
+
+      <ViewGuide
+        open={guideOpen}
+        onClose={function(){setGuideOpen(false);}}
+        title="How to use the Capacity Planning Dashboard"
+        intro="Read confidence signals, find at-risk initiatives, and inspect performer responses across the program."
+        cards={[
+          {icon:"🟢", title:"Confidence Index", color:"#1E8449", bg:"#F4FFF7",
+            body:<><strong style={{color:"#1E8449"}}>8–10 On Track</strong>, <strong style={{color:"#B7950B"}}>6–7 Monitor</strong>, and <strong style={{color:"#C0392B"}}>≤5 At Risk</strong>. The CI pill and metric tiles use these same colors. Click a metric tile to filter the list.</>},
+          {icon:"✓~✗", title:"Staffing responses", color:"#B7950B", bg:"#FFF9EC",
+            body:<><span style={{color:"#1E8449",fontWeight:800}}>✓</span> Definitely, <span style={{color:"#B7950B",fontWeight:800}}>~</span> Possibly, and <span style={{color:"#C0392B",fontWeight:800}}>✗</span> No Capacity. The mini-bar in each row shows the staffing breakdown; size chips show XS/S/M/L/XL effort.</>},
+          {icon:"👥", title:"Performer filter", color:"#2471A3", bg:"#F4FAFF",
+            body:<>Select one or more performers to show horizontal Team Summary cards at the top of the workspace. Use <strong>↓ Export CSV</strong> to download the team's visible responses; use <strong>↓ Export all</strong> to combine multiple teams in one CSV.</>},
+          {icon:"🎯", title:"Goal Health", color:"#6C3483", bg:"#FBF7FF",
+            body:<>The Goal Health card in the side panel shows on-track/monitor/risk/no-data counts per goal. Click any goal to filter the table to just that goal.</>},
+          {icon:"🚧", title:"Capacity Bottlenecks", color:"#C0392B", bg:"#FFF4F2",
+            body:<>Shows which teams are most often flagging "No Capacity" relative to their total assigned initiatives. Top 7 teams shown; higher bars mean more conflicts to resolve.</>},
+          {icon:"⚠️", title:"Mismatch banner", color:"#7B241C", bg:"#FDECEA",
+            body:<>If a red banner appears at the top of this view, the sheet's team column order has drifted from this dashboard's expected order. <strong>Drill-down attribution will be incorrect until fixed.</strong></>},
+          {icon:"🏷", title:"Drill-down details", color:"#607080", bg:"#fff",
+            body:<>Drill-downs lead with the shared identity block, then show the Confidence Index, performer responses grouped by staffing tier (with Q3 and 3-quarter LOE), the weighting reference, and the summary.</>},
+          {icon:"🔗", title:"Cross-view navigation", color:"#185FA5", bg:"#F4FAFF",
+            body:<>From any drill-down, click <strong>View in QPE →</strong> or <strong>View in Roadmap →</strong> to jump to the same initiative on the other dashboards.</>},
+        ]}
+        glossarySection={{
+          title:"Status & confidence glossary",
+          content: (
+            <div style={{display:"flex",flexWrap:"wrap",gap:"8px 12px",fontSize:11.2,color:"#606b75",lineHeight:1.4}}>
+              <span><span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,padding:"3px 7px",borderRadius:10,background:"#eafaf1",color:"#1a6b3a"}}>CI 9</span> On Track</span>
+              <span><span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,padding:"3px 7px",borderRadius:10,background:"#fefaec",color:"#7D6008"}}>CI 6</span> Monitor</span>
+              <span><span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,padding:"3px 7px",borderRadius:10,background:"#fdf2f2",color:"#922b21"}}>CI 4</span> At Risk</span>
+              <span><Chip bg="#FCF3CF" tx="#7D6608">Proposed (Ongoing)</Chip> carried forward</span>
+              <span><Chip bg="#FEF5E7" tx="#9A6800">Proposed (New)</Chip> first time this cycle</span>
+            </div>
+          )
+        }}
+      />
 
     </div>
   );
@@ -2872,6 +3024,7 @@ function RoadmapView(props){
   var [tooltip, setTooltip] = useState(null);
   var [depMode, setDepMode] = useState(false);
   var [depFocus, setDepFocus] = useState(null);
+  var [guideOpen, setGuideOpen] = useState(false);
 
   // Parse roadmap rows from cached CSV + enrich with planning sheet data.
   useEffect(function(){
@@ -3058,6 +3211,7 @@ function RoadmapView(props){
       <div style={{padding:"6px 24px",borderBottom:"1px solid #ebebeb",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#fafafa"}}>
         <span style={{fontSize:11,color:"#aaa"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
           <button onClick={rmPrintRoadmap} title="Print the currently filtered roadmap" style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>Print</button>
           <button onClick={reset} style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #e0e0e0",borderRadius:6,background:"#fff",cursor:"pointer"}}>Reset</button>
           <span style={{fontSize:11,color:"#aaa"}}>Showing</span>
@@ -3464,6 +3618,45 @@ function RoadmapView(props){
           <div style={{opacity:.7}}>{tooltip.date} · {tooltip.icon === "star" ? "Launch milestone" : "Key milestone"}{tooltip.cat ? " · "+tooltip.cat : ""}</div>
         </div>
       )}
+
+      <ViewGuide
+        open={guideOpen}
+        onClose={function(){setGuideOpen(false);}}
+        title="How to use the Program Roadmap"
+        intro="Read the timeline left to right. Bars are initiatives, stars and diamonds are milestones, and the red line marks today."
+        launchGlossary="https://docs.google.com/document/d/1hl_bN343i1azTm8nUwIQQs932pzeJXF3h7aKajR7fZE/edit?tab=t.0#heading=h.bttfzqlrvm2p"
+        cards={[
+          {icon:"📅", title:"Timeline", color:"#2471A3", bg:"#F4FAFF",
+            body:<>Quarters and months run left to right. Colored bars show initiative duration. A red line marks today, and the current month is highlighted blue.</>},
+          {icon:"★ ◇", title:"Milestones", color:"#F5A800", bg:"#FFFAF0",
+            body:<><span style={{color:"#F5A800",fontWeight:800}}>★</span> Launch milestones and <span style={{color:"#F5A800",fontWeight:800}}>◇</span> key milestones sit on the parent initiative timeline. Hover for date and category; use the milestone filter to show one type.</>},
+          {icon:"↔", title:"Dependency mode", color:"#7D6608", bg:"#FFF9EC",
+            body:<>Turn on <strong>↔ Dependency mode</strong>, then click an initiative. The focus row turns amber, upstream dependencies turn yellow, impacted downstream rows turn blue, and unrelated rows fade.</>},
+          {icon:"🔎", title:"Dependency impact", color:"#1F618D", bg:"#F4FAFF",
+            body:<>The inspector panel shows structured dependency type, required-by date, impact if late, mitigation notes, plus clickable <strong>Depends on</strong> and <strong>Potentially impacted</strong> lists.</>},
+          {icon:"🏷", title:"Roadmap details", color:"#607080", bg:"#fff",
+            body:<>Inspector details show the shared identity block (Goal, Objective, POC), plus Roadmap-only Audience, Start, End, and Awardees.</>},
+          {icon:"⚠", title:"Risks & TBD", color:"#C0392B", bg:"#FFF4F2",
+            body:<><span style={{color:"#C0392B",fontWeight:800}}>⚠</span> Risks are highlighted in red. <strong>TBD</strong> items have no start, end, or quarter and can be hidden with the Hide TBD toggle.</>},
+          {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
+            body:<>The <strong>Print</strong> button opens a clean, landscape-sized snapshot of the currently filtered roadmap in a new tab — ready to print or save as PDF.</>},
+          {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
+            body:<>From the inspector, click <strong>View in QPE →</strong> or <strong>View in Capacity →</strong> to jump to the same initiative on the other dashboards.</>},
+        ]}
+        glossarySection={{
+          title:"Goal colors",
+          content: (
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:"7px 10px",fontSize:11.2,color:"#606b75"}}>
+              {Object.keys(GOALS).map(function(k){var g = GOALS[k];
+                return <span key={k} style={{display:"inline-flex",alignItems:"center",gap:6,minWidth:0}}>
+                  <span style={{width:14,height:14,borderRadius:4,background:goalBorderColor(g),display:"inline-block",border:"1px solid rgba(0,0,0,.08)"}}/>
+                  <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>G{g.num} {g.short}</span>
+                </span>;
+              })}
+            </div>
+          )
+        }}
+      />
 
     </div>
   );
