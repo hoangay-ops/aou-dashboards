@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>All of Us — Program Dashboards</title>
+<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f8fa;color:#1a1a1a;overflow:hidden;}
+button,select,input{font-family:inherit;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:#d8d8d8;border-radius:4px;}
+::-webkit-scrollbar-thumb:hover{background:#bbb;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ─── Shared tab navigation ──────────────────────────────────── */
+.tab-bar{display:flex;background:#fff;border-bottom:1px solid #ececec;padding:0 24px;flex-shrink:0;gap:2px;}
+.tab{padding:12px 20px;border:none;background:transparent;font-size:13px;font-weight:600;color:#888;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;transition:color .12s,border-color .12s;letter-spacing:.2px;}
+.tab:hover{color:#2471A3;}
+.tab.active{color:#2471A3;border-bottom-color:#2471A3;}
+.tab-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:#EBF5FB;color:#2471A3;font-size:10px;font-weight:700;}
+</style>
+</head>
+<body>
+<div id="root" style="height:100%;display:flex;flex-direction:column;"></div>
+<script type="text/babel" data-presets="env,react">
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SHARED CONSTANTS — single source of truth for all three views
+   ════════════════════════════════════════════════════════════════════════════ */
+
+// Cycle configuration — update at each cycle rollover (see Project Instructions
+// > Cycle Rollover). Previously this was duplicated across three files.
+const CYCLE = {
+  current:       "Q3 2026",
+  previous:      "Q2 2026",
+  baseline:      "Q4 2025",
+  currentShort:  "Q3 '26",
+  previousShort: "Q2 '26",
+};
+
+// Published CSV URLs — same in all three legacy dashboards.
+const PLANNING_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=0&single=true&output=csv";
+const GOALS_CSV_URL    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=1157686184&single=true&output=csv";
+const CAPACITY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRBMoz4Ih_0AkKsm0qr1xfM4tkppaQqFJVWJ8IE6tmSO99MmxUOW8scahb2ljMapz_lPO_4Q_EaKDR8/pub?gid=910516878&single=true&output=csv";
+
+// The Roadmap pulls from a separate sheet — keep its URL builders here too.
+const ROADMAP_SHEET_ID  = "1UAVBmkBC1l-Pnp5UMe_72FTjv_03Xwe9fcgu5nHPcQg";
+const ROADMAP_SHEET_GID = "0";
+
+// Canonical goal definitions — keyed by numeric string ("1"–"6").
+// The Roadmap view will need a normalizer to convert its composite sheet keys
+// (e.g. "1-Enrollment & Retention") into these numeric keys when it ports.
+// Colors per Dashboard Consistency Spec §2.4.
+const GOALS = {
+  "1":{num:"1",name:"Enrollment & Retention",          short:"Enrollment & Retention",color:"#5EAEE0"},
+  "2":{num:"2",name:"Data Available to Researchers",   short:"Data to Researchers",   color:"#7AC79B"},
+  "3":{num:"3",name:"Partnered Research Studies",      short:"Partnered Research",    color:"#F58D77"},
+  "4":{num:"4",name:"Researcher Access & Impact",      short:"Researcher Access",     color:"#FFDD7F"},
+  "5":{num:"5",name:"Participant Return of Value",     short:"Return of Value",       color:"#F2728C"},
+  "6":{num:"6",name:"Management & Operations",         short:"Management & Ops",      color:"#D8D8D8"},
+};
+
+// Canonical taxonomy fallback — used when sheet rows omit owner/name fields.
+const TAXONOMY_REF = {
+  "1": {name:"Enrollment & Retention", owner:"Holly Garriock", objectives:{
+    "1.1": {name:"Core Participants", owner:"Holly Garriock"},
+    "1.2": {name:"Adult Population Characteristics", owner:"Janeth Sanchez"},
+    "1.3": {name:"Pediatric Participants", owner:"Sara Van Driest"},
+    "1.4": {name:"PRS Participants", owner:"Holly Garriock"},
+    "1.5": {name:"Digital Experience", owner:"Holly Garriock"}
+  }},
+  "2": {name:"Data to Researchers", owner:"Geoff Ginsburg", objectives:{
+    "2.1": {name:"Scientific Strategy", owner:"Geoff Ginsburg"},
+    "2.2": {name:"Core Data", owner:"Jen Adjemian"},
+    "2.3": {name:"New Data Contribution", owner:""},
+    "2.4": {name:"Check-In", owner:"Sarra Hedden"},
+    "2.5": {name:"Release Data to Researchers", owner:"Jen Adjemian"}
+  }},
+  "3": {name:"Partnered Research Studies", owner:"Sheri Schully", objectives:{
+    "3.1": {name:"Build & Launch PRS Infrastructure", owner:"Erica Landis"},
+    "3.2": {name:"Manage PRS Portfolio", owner:"Sheri Schully"},
+    "3.3": {name:"PRS Population Characteristics", owner:"Janeth Sanchez"}
+  }},
+  "4": {name:"Researcher Access", owner:"Minnkyong Lee", objectives:{
+    "4.1": {name:"Registered Researchers", owner:"James McClain"},
+    "4.2": {name:"Research Output", owner:"Romey Azuine"},
+    "4.3": {name:"Partner Tier", owner:"James McClain"},
+    "4.4": {name:"Publications", owner:"Geoff Ginsburg"}
+  }},
+  "5": {name:"Return of Value", owner:"Janeth Sanchez", objectives:{
+    "5.1": {name:"Participant & Community Engagement", owner:"Yong Crosby"},
+    "5.2": {name:"Participant-Focused Outreach", owner:"Rachele Peterson"},
+    "5.3": {name:"Offer DNA Results", owner:"N/A"},
+    "5.4": {name:"Expand Delivery of RoV Initiatives", owner:"Janeth Sanchez"}
+  }},
+  "6": {name:"Management & Ops", owner:"Stephanie Devaney", objectives:{
+    "6.1": {name:"Data Management", owner:"Jen Adjemian"},
+    "6.2": {name:"Participant Analytics", owner:"Jon Kim"},
+    "6.3": {name:"Resource Optimization", owner:"Stephanie Devaney"},
+    "6.4": {name:"Partnerships", owner:"Ned Culhane"}
+  }}
+};
+
+// Status chip styling — shared across QPE and Capacity drill-downs.
+const STATUS_CFG = {
+  Committed:   {bg:"#D6EAF8",tx:"#1F618D",dot:"#2471A3"},
+  Proposed:    {bg:"#FCF3CF",tx:"#7D6608",dot:"#B7950B"},
+  Backlogged:  {bg:"#EAECEE",tx:"#566573",dot:"#7F8C8D"},
+  Complete:    {bg:"#D5F5E3",tx:"#1E8449",dot:"#1E8449"},
+  Eliminated:  {bg:"#FADBD8",tx:"#943126",dot:"#C0392B"},
+  Concept:     {bg:"#F4ECF7",tx:"#6C3483",dot:"#6C3483"},
+  "Not Funded":{bg:"#FDECEA",tx:"#943126",dot:"#C0392B"},
+};
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SHARED HELPERS
+   ════════════════════════════════════════════════════════════════════════════ */
+
+// Goal 6's canonical fill color (#D8D8D8) is too light to use as a border,
+// chip outline, accent strip, or text color on white. This helper returns a
+// darker variant for those contexts. The canonical color is preserved
+// everywhere else (fills, low-opacity chip backgrounds, etc.).
+function goalBorderColor(g){
+  if(!g) return "#999";
+  return g.num === "6" ? "#9A9A9A" : g.color;
+}
+
+// Taxonomy fallback lookups.
+function taxonomyGoalRef(goalKey){
+  var gnum = String(goalKey || "").match(/\d/);
+  if(!gnum && GOALS && GOALS[goalKey] && GOALS[goalKey].num) gnum = [GOALS[goalKey].num];
+  return gnum ? TAXONOMY_REF[gnum[0]] : null;
+}
+function taxonomyObjRef(obj){
+  var m = String(obj || "").match(/\d+\.\d+/);
+  if(!m) return null;
+  var gnum = m[0].split(".")[0];
+  return TAXONOMY_REF[gnum] && TAXONOMY_REF[gnum].objectives[m[0]] ? TAXONOMY_REF[gnum].objectives[m[0]] : null;
+}
+function formatGoalDetail(goalKey, fallbackName, fallbackOwner){
+  var g = GOALS && GOALS[goalKey] ? GOALS[goalKey] : null;
+  var num = g ? g.num : (String(goalKey||"").match(/\d/)||[""])[0];
+  var ref = taxonomyGoalRef(goalKey) || taxonomyGoalRef(num);
+  var name = (ref && ref.name) || fallbackName || (g && (g.short || g.name)) || "—";
+  var owner = (ref && ref.owner) || fallbackOwner || "—";
+  return num ? (num + " - " + name + " (Owner: " + owner + ")") : "—";
+}
+function formatObjectiveDetail(obj, fallbackName, fallbackOwner){
+  if(!obj && !fallbackName) return "—";
+  var ref = taxonomyObjRef(obj);
+  var id = obj || "";
+  var name = (ref && ref.name) || fallbackName || "—";
+  var owner = (ref && ref.owner) || fallbackOwner || "—";
+  return (id ? id + " - " : "") + name + " (Owner: " + owner + ")";
+}
+
+// CSV parsing — handles quoted cells with embedded commas and newlines.
+function parseCSV(text){
+  var rows=[], row=[], cell="", inQ=false;
+  for(var i=0;i<text.length;i++){
+    var c=text[i], n=text[i+1];
+    if(c==='"'&&inQ&&n==='"'){cell+='"';i++;}
+    else if(c==='"')inQ=!inQ;
+    else if(c===','&&!inQ){row.push(cell);cell="";}
+    else if((c==='\n'||c==='\r')&&!inQ){
+      if(cell||row.length){row.push(cell);rows.push(row);row=[];cell="";}
+      if(c==='\r'&&n==='\n')i++;
+    }
+    else cell+=c;
+  }
+  if(cell||row.length){row.push(cell);rows.push(row);}
+  return rows;
+}
+
+// Header normalization — strips whitespace, lowercases, collapses runs of space.
+function normHeader(h){
+  return String(h||"").toLowerCase().replace(/[\r\n]+/g," ").replace(/\s+/g," ").trim();
+}
+
+// Returns an accessor function that looks up cells by any of N header names.
+function makeRowAccessor(headerRow){
+  var normed = headerRow.map(normHeader);
+  return function(row){
+    for(var k=1;k<arguments.length;k++){
+      var key = normHeader(arguments[k]);
+      var idx = normed.indexOf(key);
+      if(idx !== -1 && row[idx] != null && String(row[idx]).trim() !== ""){
+        return String(row[idx]).trim();
+      }
+    }
+    return "";
+  };
+}
+
+// Cache-buster for CSV fetches.
+function addCacheBuster(url){
+  return url + (url.indexOf("?") === -1 ? "?" : "&") + "_=" + Date.now();
+}
+
+// PSI URL builder — slug fallback used when no explicit URL is known.
+function buildPsiUrl(init){
+  if(!init || !init.id) return "";
+  var idPart = String(init.id).replace(/\./g, "-");
+  var namePart = String(init.name || "")
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  var slug = namePart ? (idPart + "-" + namePart) : idPart;
+  return "https://sites.google.com/nih.gov/aou-project-status-inventory/psi-home/initiatives/" + slug;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SHARED COMPONENTS
+   ════════════════════════════════════════════════════════════════════════════ */
+
+const {useState, useMemo, useEffect, useRef, useCallback} = React;
+
+// Canonical italicized program name — use everywhere "All of Us" appears.
+function AoU(){ return <em style={{fontStyle:"italic"}}>All of Us</em>; }
+
+// Small reusable chip — same look across all views.
+function Chip(props){
+  return <span style={{
+    display:"inline-flex",alignItems:"center",gap:3,
+    fontSize:props.size||10,fontWeight:600,
+    padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap",
+    background:props.bg, color:props.tx
+  }}>{props.children}</span>;
+}
+
+// Goal chip (long-form): used in identity blocks per spec §1.
+function GoalChipFull(props){
+  var c = GOALS[props.g];
+  if(!c) return null;
+  return <Chip bg={c.color+"22"} tx={goalBorderColor(c)} size={props.size}>
+    G{c.num} · {c.name}
+  </Chip>;
+}
+
+// Status chip — handles the Proposed (New) / (Ongoing) split if asked.
+function StatusChip(props){
+  var s = props.status;
+  if(!s) return null;
+  // Special handling: Proposed splits when isNew is provided.
+  if(s === "Proposed" && props.isNew === true){
+    return <Chip bg="#FEF5E7" tx="#9A6800" size={props.size}>Proposed (New)</Chip>;
+  }
+  if(s === "Proposed" && props.isNew === false){
+    return <Chip bg="#FCF3CF" tx="#7D6608" size={props.size}>Proposed (Ongoing)</Chip>;
+  }
+  var c = STATUS_CFG[s];
+  if(!c) return null;
+  return <Chip bg={c.bg} tx={c.tx} size={props.size}>{s}</Chip>;
+}
+
+// Reusable multi-select dropdown — used by every view's filter toolbar.
+function MultiSelect(props){
+  var label = props.label, options = props.options, selected = props.selected, onChange = props.onChange;
+  var oo = useState(false); var open = oo[0], setOpen = oo[1];
+  var ref = useRef(null);
+  useEffect(function(){
+    function h(e){ if(ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", h);
+    return function(){ document.removeEventListener("mousedown", h); };
+  },[]);
+  var all = selected.length === 0;
+  function toggle(k){
+    if(selected.indexOf(k) === -1) onChange(selected.concat([k]));
+    else onChange(selected.filter(function(x){return x!==k;}));
+  }
+  return (
+    <div ref={ref} style={{position:"relative",display:"inline-block"}}>
+      <button onClick={function(){setOpen(!open);}} style={{
+        fontSize:11.5,padding:"5px 11px",
+        border:"1px solid "+(open||!all?"#2471A3":"#dcdcdc"),
+        borderRadius:18,
+        background:open||!all?"#EBF5FB":"#fff",
+        color:open||!all?"#2471A3":"#555",
+        cursor:"pointer",fontWeight:500,whiteSpace:"nowrap"
+      }}>
+        {all?label:label+" ("+selected.length+")"}
+        <span style={{fontSize:8,marginLeft:3,opacity:.6}}>{open?"▲":"▼"}</span>
+      </button>
+      {open && (
+        <div style={{
+          position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:600,
+          background:"#fff",border:"1px solid #dcdcdc",borderRadius:8,
+          boxShadow:"0 6px 18px rgba(0,0,0,.10)",
+          minWidth:200,padding:"4px 0",maxHeight:340,overflowY:"auto"
+        }}>
+          <div onClick={function(){onChange([]);setOpen(false);}} style={{
+            fontSize:11.5,padding:"6px 12px",cursor:"pointer",
+            color:all?"#2471A3":"#555",fontWeight:all?600:400,
+            background:all?"#EBF5FB":"transparent"
+          }}>All</div>
+          <div style={{height:1,background:"#f0f0f0",margin:"3px 0"}}/>
+          {options.map(function(o){
+            var on = selected.indexOf(o) !== -1;
+            return (
+              <div key={o} onClick={function(){toggle(o);}} style={{
+                fontSize:11.5,padding:"6px 12px",cursor:"pointer",
+                display:"flex",alignItems:"center",gap:8,
+                background:on?"#EBF5FB":"transparent",
+                color:on?"#2471A3":"#333"
+              }}>
+                <span style={{
+                  width:13,height:13,borderRadius:3,
+                  border:"1px solid "+(on?"#2471A3":"#ccc"),
+                  background:on?"#2471A3":"#fff",
+                  display:"inline-flex",alignItems:"center",justifyContent:"center",
+                  fontSize:9,color:"#fff"
+                }}>{on?"✓":""}</span>
+                {o}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Identity Block (Spec §1) ─────────────────────────────────────────────
+   The canonical drill-down header. Every view's drill-down panel will render
+   this at the top, followed by view-specific content below a divider.
+
+   Per spec §1, field order is fixed:
+   1. Initiative ID (monospace)
+   2. Initiative Name
+   3. Goal (long-form with number prefix)
+   4. Objective (ID + name)
+   5. Status chip
+   6. Project Type / NEW badge
+   7. Owner / POC
+   8. View in PSI link
+   ──────────────────────────────────────────────────────────────────────── */
+function IdentityBlock(props){
+  var init = props.init;
+  var goalsRef = props.goalsRef || {};
+  if(!init) return null;
+
+  var g = GOALS[init.goal];
+  var gRef = goalsRef[init.goal] || {};
+  var goalDetail = formatGoalDetail(init.goal, gRef.name, gRef.owner || init.goalOwner);
+  var objDetail = formatObjectiveDetail(init.obj, init.objName, init.objOwner);
+
+  return (
+    <div style={{padding:"14px 18px",background:"#fafbfc",borderBottom:"1px solid #ececec"}}>
+      {/* Row 1: ID + NEW badge + close button area is the parent's responsibility */}
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+        <span style={{fontFamily:"monospace",fontSize:11,color:"#999"}}>{init.id}</span>
+        {init.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={9}>NEW</Chip>}
+      </div>
+
+      {/* Row 2: Name */}
+      <div style={{fontSize:15,fontWeight:700,lineHeight:1.3,color:"#111",marginBottom:10}}>
+        {init.name}
+      </div>
+
+      {/* Row 3: Chips — Goal, Status, Project Type */}
+      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
+        <GoalChipFull g={init.goal}/>
+        <StatusChip status={init.status} isNew={init.isNew}/>
+      </div>
+
+      {/* Row 4: Details grid (Goal, Objective, POC) */}
+      <div style={{display:"flex",flexDirection:"column",gap:4,fontSize:11.5,lineHeight:1.45,marginBottom:10}}>
+        <div style={{color:"#333"}}><strong>Goal:</strong> {goalDetail}</div>
+        <div style={{color:"#333"}}><strong>Objective:</strong> {objDetail}</div>
+        <div style={{color:"#333"}}><strong>POC / PdM:</strong> {init.poc || "—"}</div>
+      </div>
+
+      {/* Row 5: Cross-view navigation + PSI link */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {props.currentView !== "qpe" && (
+          <button onClick={function(){props.onNavigateView("qpe", init.id);}} style={navLinkStyle}>
+            View in QPE →
+          </button>
+        )}
+        {props.currentView !== "roadmap" && (
+          <button onClick={function(){props.onNavigateView("roadmap", init.id);}} style={navLinkStyle}>
+            View in Roadmap →
+          </button>
+        )}
+        {props.currentView !== "capacity" && (
+          <button onClick={function(){props.onNavigateView("capacity", init.id);}} style={navLinkStyle}>
+            View in Capacity →
+          </button>
+        )}
+        <a href={buildPsiUrl(init)} target="_blank" rel="noopener noreferrer" style={Object.assign({}, navLinkStyle, {textDecoration:"none",display:"inline-flex",alignItems:"center"})}>
+          View in PSI ↗
+        </a>
+      </div>
+    </div>
+  );
+}
+const navLinkStyle = {
+  fontSize:11,padding:"5px 10px",
+  border:"1px solid #C8DCF0",borderRadius:6,
+  background:"#EBF5FB",color:"#2471A3",
+  cursor:"pointer",fontWeight:500
+};
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SHARED CSV LOADER
+   Fetches all three CSVs once on app load. Views read from this cache rather
+   than refetching. Refresh button on each view re-runs this loader.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+function useDataLoader(){
+  var [state, setState] = useState({
+    status: "loading",        // "loading" | "ready" | "error"
+    error: "",
+    loadedAt: null,
+    planningCsv: "",          // raw text — each view's parser handles the rest
+    goalsCsv: "",
+    capacityCsv: "",
+  });
+
+  var load = useCallback(function(){
+    setState(function(s){return Object.assign({}, s, {status:"loading", error:""});});
+
+    function fetchText(url){
+      return fetch(addCacheBuster(url), {cache:"no-store"})
+        .then(function(r){
+          if(!r.ok) throw new Error("HTTP "+r.status+" from "+url);
+          return r.text();
+        })
+        .then(function(text){
+          if(text.toLowerCase().indexOf("<html") > -1){
+            throw new Error("Sheet returned HTML instead of CSV — check publication settings");
+          }
+          return text;
+        });
+    }
+
+    Promise.all([
+      fetchText(PLANNING_CSV_URL),
+      fetchText(GOALS_CSV_URL),
+      fetchText(CAPACITY_CSV_URL).catch(function(){return "";}),
+    ])
+      .then(function(results){
+        setState({
+          status: "ready",
+          error: "",
+          loadedAt: new Date(),
+          planningCsv: results[0],
+          goalsCsv: results[1],
+          capacityCsv: results[2],
+        });
+      })
+      .catch(function(err){
+        setState(function(s){return Object.assign({}, s, {
+          status: "error",
+          error: err.message || String(err)
+        });});
+      });
+  }, []);
+
+  useEffect(function(){ load(); }, [load]);
+
+  return {state: state, reload: load};
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   VIEW PLACEHOLDERS
+   These will be replaced in Steps 2–4 by the ported QPE, Capacity, and
+   Roadmap views. For now they're stubs that prove the shell works.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+function PlaceholderView(props){
+  var data = props.data;
+  return (
+    <div style={{flex:1,overflow:"auto",padding:"40px 32px",background:"#f7f8fa"}}>
+      <div style={{maxWidth:680,margin:"0 auto",background:"#fff",border:"1px solid #ececec",borderRadius:10,padding:"32px",boxShadow:"0 1px 2px rgba(0,0,0,.03)"}}>
+        <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:1.2,color:"#999",fontWeight:700,marginBottom:8}}>
+          Shell · Step 1
+        </div>
+        <h2 style={{fontSize:22,fontWeight:700,color:"#111",marginBottom:10}}>
+          {props.title}
+        </h2>
+        <p style={{fontSize:13,color:"#555",lineHeight:1.6,marginBottom:18}}>
+          This view will be ported in {props.step}. The shell is functioning correctly if you see this message and can switch between tabs.
+        </p>
+
+        <div style={{padding:"14px 16px",background:"#fafbfc",border:"1px solid #ececec",borderRadius:8,fontSize:12,color:"#555",marginBottom:14}}>
+          <div style={{fontWeight:700,marginBottom:8,color:"#333"}}>Shared data status</div>
+          {data.state.status === "loading" && <div style={{color:"#888"}}>↻ Loading CSVs…</div>}
+          {data.state.status === "error" && <div style={{color:"#C0392B"}}>⚠ {data.state.error}</div>}
+          {data.state.status === "ready" && (
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <div>● Loaded at {data.state.loadedAt.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>
+              <div style={{fontSize:11,color:"#888"}}>
+                Planning CSV: {data.state.planningCsv.length.toLocaleString()} chars ·
+                Goals CSV: {data.state.goalsCsv.length.toLocaleString()} chars ·
+                Capacity CSV: {data.state.capacityCsv.length.toLocaleString()} chars
+              </div>
+            </div>
+          )}
+        </div>
+
+        {props.selectedInitiativeId && (
+          <div style={{padding:"12px 14px",background:"#EBF5FB",border:"1px solid #C8DCF0",borderRadius:8,fontSize:12,color:"#1F618D"}}>
+            <div style={{fontWeight:700,marginBottom:4}}>Cross-view navigation working</div>
+            <div>You navigated here with initiative <strong style={{fontFamily:"monospace"}}>{props.selectedInitiativeId}</strong> pre-selected. Once this view is ported, its drill-down will open automatically for this initiative.</div>
+          </div>
+        )}
+
+        <div style={{marginTop:18,fontSize:11,color:"#999",lineHeight:1.5}}>
+          <div style={{fontWeight:700,marginBottom:4,color:"#777"}}>What's available in the shell:</div>
+          <ul style={{paddingLeft:18}}>
+            <li>Shared <code>CYCLE</code>, <code>GOALS</code>, <code>TAXONOMY_REF</code> constants</li>
+            <li>Shared helpers: <code>parseCSV</code>, <code>normHeader</code>, <code>makeRowAccessor</code>, <code>goalBorderColor</code>, <code>formatGoalDetail</code>, <code>formatObjectiveDetail</code>, <code>buildPsiUrl</code></li>
+            <li>Shared components: <code>AoU</code>, <code>Chip</code>, <code>GoalChipFull</code>, <code>StatusChip</code>, <code>MultiSelect</code>, <code>IdentityBlock</code></li>
+            <li>Shared data loader: fetches all three CSVs once, cached in <code>data.state</code></li>
+            <li>Cross-view navigation via <code>selectInitiative(id, targetView)</code></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   APP SHELL
+   Top-level component. Manages active view, selected initiative for cross-view
+   navigation, and the shared data loader.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+function App(){
+  var [activeView, setActiveView] = useState("qpe");        // "qpe" | "roadmap" | "capacity"
+  var [selectedInitiativeId, setSelectedInitiativeId] = useState(null);
+  var data = useDataLoader();
+
+  // Cross-view navigation: switch tabs and remember which initiative to focus.
+  // Views will read selectedInitiativeId from props and auto-open the drill-down.
+  var selectInitiative = useCallback(function(targetView, initiativeId){
+    setActiveView(targetView);
+    setSelectedInitiativeId(initiativeId);
+  }, []);
+
+  // When the user manually switches tabs (via tab bar), clear the
+  // selected initiative — they're not navigating from a drill-down.
+  function handleTabClick(view){
+    setActiveView(view);
+    setSelectedInitiativeId(null);
+  }
+
+  var viewProps = {
+    data: data,
+    selectedInitiativeId: selectedInitiativeId,
+    onNavigateView: selectInitiative,
+    currentView: activeView,
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+
+      {/* Program header — shown across all views */}
+      <div style={{padding:"14px 24px",background:"#fff",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:10.5,textTransform:"uppercase",letterSpacing:1.4,color:"#888",fontWeight:600,marginBottom:4}}>
+            NIH · <AoU/> Research Program · {CYCLE.current}
+          </div>
+          <div style={{fontSize:20,fontWeight:700,color:"#111",lineHeight:1.2,letterSpacing:-0.2}}>
+            Program Dashboards
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}}>
+          {data.state.status === "ready" && (
+            <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#EAF7EF",color:"#1E8449",fontWeight:600}}>
+              ● live · {data.state.loadedAt.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}
+            </span>
+          )}
+          {data.state.status === "loading" && (
+            <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#EBF5FB",color:"#2471A3",fontWeight:600}}>↻ loading…</span>
+          )}
+          {data.state.status === "error" && (
+            <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#FDECEA",color:"#C0392B",fontWeight:600}} title={data.state.error}>● load failed</span>
+          )}
+          <button onClick={data.reload} title="Refresh all data" style={{fontSize:11.5,padding:"6px 12px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>
+            ↻ Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div className="tab-bar">
+        <button className={"tab"+(activeView==="qpe"?" active":"")} onClick={function(){handleTabClick("qpe");}}>
+          Quarterly Planning
+        </button>
+        <button className={"tab"+(activeView==="roadmap"?" active":"")} onClick={function(){handleTabClick("roadmap");}}>
+          Roadmap
+        </button>
+        <button className={"tab"+(activeView==="capacity"?" active":"")} onClick={function(){handleTabClick("capacity");}}>
+          Capacity Planning
+        </button>
+      </div>
+
+      {/* Active view */}
+      {activeView === "qpe"      && <PlaceholderView {...viewProps} title="Quarterly Planning Dashboard" step="Step 2"/>}
+      {activeView === "roadmap"  && <PlaceholderView {...viewProps} title="Program Roadmap" step="Step 4"/>}
+      {activeView === "capacity" && <PlaceholderView {...viewProps} title="Capacity Planning Dashboard" step="Step 3"/>}
+
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ERROR BOUNDARY + MOUNT
+   ════════════════════════════════════════════════════════════════════════════ */
+
+function ErrorBoundary(props){
+  React.Component.call(this, props);
+  this.state = {err: null};
+}
+ErrorBoundary.prototype = Object.create(React.Component.prototype);
+ErrorBoundary.prototype.constructor = ErrorBoundary;
+ErrorBoundary.prototype.componentDidCatch = function(err){ this.setState({err: err}); };
+ErrorBoundary.prototype.render = function(){
+  if(this.state.err){
+    var self = this;
+    return React.createElement("div", {style:{padding:40,fontFamily:"monospace",fontSize:12,color:"#C0392B",background:"#FDECEA",margin:20,borderRadius:8,border:"1px solid #E6B0AA"}},
+      React.createElement("div", {style:{fontSize:14,fontWeight:700,marginBottom:10}}, "Something broke rendering this view"),
+      React.createElement("div", {style:{marginBottom:10}}, String(this.state.err.message || this.state.err)),
+      React.createElement("button", {
+        onClick: function(){ self.setState({err: null}); },
+        style: {marginTop:12,padding:"6px 14px",border:"1px solid #C0392B",borderRadius:6,background:"#fff",color:"#C0392B",cursor:"pointer",fontWeight:600}
+      }, "Reset view")
+    );
+  }
+  return this.props.children;
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  React.createElement(ErrorBoundary, null, React.createElement(App, null))
+);
+
+</script>
+</body>
+</html>
