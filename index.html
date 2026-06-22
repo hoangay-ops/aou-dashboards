@@ -2574,7 +2574,7 @@ function rmNormalizeRows(rows){
     } else if(!id && (icon === "star" || icon === "diamond")){
       var pid = rmExtractParentId(rmNf(r["parent"]));
       if(!pid) continue;
-      var mc2 = /tech readiness/i.test(cat) ? "tech readiness" : (cat === "tech" || cat === "comms" ? cat : "");
+      var mc2 = /tech readiness/i.test(cat) ? "tech readiness" : (cat === "Tech" || cat === "Comms" ? cat : "");
       mils.push({
         id:("MS-"+pid+"-"+icon+"-"+name+"-"+i).replace(/[^a-zA-Z0-9._-]+/g,"-").slice(0,80),
         name:name, start:rmNf(r["start"]) || null, end:rmNf(r["end"]) || null,
@@ -2887,7 +2887,7 @@ function RoadmapView(props){
   var cols = useMemo(function(){ return rmGenMonths(VS, VE); }, [VS, VE]);
   var quarters = useMemo(function(){ return rmGroupByQuarter(cols); }, [cols]);
   var allInit = useMemo(function(){ return roadmapItems.filter(function(i){return i.cat === "initiative";}); }, [roadmapItems]);
-  var msItems = useMemo(function(){ return items.filter(function(i){return i.cat === "comms" || i.cat === "tech";}); }, [items]);
+  var msItems = useMemo(function(){ return items.filter(function(i){return i.cat === "Comms" || i.cat === "Tech";}); }, [items]);
 
   var tbdHiddenCount = useMemo(function(){
     if(!hideTBD) return 0;
@@ -2944,8 +2944,8 @@ function RoadmapView(props){
   var getMs = useCallback(function(id){
     return msItems.filter(function(m){
       if(m.parent !== id) return false;
-      if(milestoneView === "tech"  && m.icon !== "star") return false;
-      if(milestoneView === "comms" && m.icon !== "diamond") return false;
+      if(milestoneView === "Tech"  && m.icon !== "star") return false;
+      if(milestoneView === "Comms" && m.icon !== "diamond") return false;
       return true;
     });
   }, [msItems, milestoneView]);
@@ -3108,8 +3108,8 @@ function RoadmapView(props){
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontSize:9.5,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.05}}>Milestones</span>
           <RmSegBtn active={milestoneView === "both"} onClick={function(){setMilestoneView("both");}}>Both</RmSegBtn>
-          <RmSegBtn active={milestoneView === "tech"} onClick={function(){setMilestoneView("tech");}}>★ Launch</RmSegBtn>
-          <RmSegBtn active={milestoneView === "comms"} onClick={function(){setMilestoneView("comms");}}>◇ Key</RmSegBtn>
+          <RmSegBtn active={milestoneView === "Tech"} onClick={function(){setMilestoneView("Tech");}}>★ Launch</RmSegBtn>
+          <RmSegBtn active={milestoneView === "Comms"} onClick={function(){setMilestoneView("Comms");}}>◇ Key Milestone</RmSegBtn>
         </div>
         <RmSep/>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3141,7 +3141,7 @@ function RoadmapView(props){
           <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",paddingRight:22,marginRight:22,borderRight:"1px solid #ebebeb"}}>
             <span style={{fontSize:9,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.5}}>Markers</span>
             <span style={{display:"flex",alignItems:"center",gap:6}}><RmStarIcon sz={13}/><span>Launch</span></span>
-            <span style={{display:"flex",alignItems:"center",gap:6}}><RmDiamondIcon sz={13}/><span>Key</span></span>
+            <span style={{display:"flex",alignItems:"center",gap:6}}><RmDiamondIcon sz={13}/><span>Key Milestone</span></span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
             <span style={{fontSize:9,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.5}}>Badges</span>
