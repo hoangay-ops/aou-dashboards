@@ -9,16 +9,16 @@
 <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f8fa;color:#1a1a1a;overflow:hidden;}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f8fa;color:#1a1a1a;overflow:hidden;font-size:14px;}
 button,select,input{font-family:inherit;}
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-thumb{background:#d8d8d8;border-radius:4px;}
 ::-webkit-scrollbar-thumb:hover{background:#bbb;}
 @keyframes spin{to{transform:rotate(360deg)}}
-.tab-bar{display:flex;background:#fff;border-bottom:1px solid #ececec;padding:0 24px;flex-shrink:0;gap:2px;}
-.tab{padding:12px 20px;border:none;background:transparent;font-size:13px;font-weight:600;color:#888;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;transition:color .12s,border-color .12s;letter-spacing:.2px;}
+.tab-bar{display:flex;background:#fff;border-bottom:1px solid #dbe7f3;padding:0 24px;flex-shrink:0;gap:6px;}
+.tab{padding:13px 22px;border:1px solid transparent;background:transparent;font-size:14px;font-weight:700;color:#6f7f8f;cursor:pointer;border-bottom:4px solid transparent;margin-bottom:-1px;transition:color .12s,border-color .12s,background .12s,box-shadow .12s;letter-spacing:.2px;border-radius:10px 10px 0 0;}
 .tab:hover{color:#2471A3;}
-.tab.active{color:#2471A3;border-bottom-color:#2471A3;}
+.tab.active{color:#185FA5;border-color:#C8DCF0;border-bottom-color:#185FA5;background:#EBF5FB;box-shadow:inset 0 -1px 0 #185FA5;}
 </style>
 </head>
 <body>
@@ -1590,7 +1590,7 @@ function CapBottleneckRows(props){
       {props.teams.map(function(t){
         var frac = t.total > 0 ? (t.count/t.total*100) : 0;
         return (
-          <div key={t.name} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center"}}>
+          <div key={t.name} onClick={function(){if(props.onTeamClick) props.onTeamClick(t.name);}} title="Click to drill into this team's capacity responses" style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",cursor:"pointer",padding:"4px 6px",margin:"0 -6px",borderRadius:6}}>
             <div style={{minWidth:0}}>
               <div style={{fontSize:11.5,fontWeight:650,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</div>
               <div style={{height:5,borderRadius:3,background:"#f0f2f5",overflow:"hidden",marginTop:3}}>
@@ -1615,8 +1615,8 @@ function CapInsightPanel(props){
       <CapInsightCard title="Goal Health" action="click a goal to filter">
         <CapGoalHealthRows goalHealth={props.insights.goalHealth} onGoalClick={props.onGoalClick}/>
       </CapInsightCard>
-      <CapInsightCard title="Capacity Bottlenecks" action="no-capacity / assigned">
-        <CapBottleneckRows teams={props.insights.bottlenecks}/>
+      <CapInsightCard title="Capacity Bottlenecks" action="click team to drill down">
+        <CapBottleneckRows teams={props.insights.bottlenecks} onTeamClick={props.onTeamClick}/>
       </CapInsightCard>
       <CapInsightCard title="Legend">
         <div style={{display:"flex",flexWrap:"wrap",gap:"6px 10px",fontSize:10.5,color:"#777"}}>
@@ -2207,7 +2207,8 @@ function CapacityView(props){
             <CapInsightPanel insights={insights} health={health}
               onSelect={function(id){setDrill(id);}}
               onGoalClick={function(g){setGoalFilter(goalFilter === g ? "all" : g);}}
-              onTierClick={function(t){setTierFilter(tierFilter === t ? "all" : t);}}/>
+              onTierClick={function(t){setTierFilter(tierFilter === t ? "all" : t);}}
+              onTeamClick={function(teamName){setTeamFilter([teamName]);}}/>
           </div>
         </div>
       </div>
@@ -2291,6 +2292,7 @@ const RM_AWARDEE_CFG = {
   Biobank: {label:"Biobank", color:"#B3541E",bg:"#FDF2E9",tx:"#B3541E"},
 };
 const RM_AWARDEE_KEYS = ["DRC","PPSC","Biobank"];
+const RM_CONCEPT_IDS = {"1.5.16":true,"5.2.10":true};
 const RM_INIT_STATUS_CFG = {
   Complete:   {label:"Complete", icon:"✓", bg:"#D5F5E3", tx:"#1E8449", border:"#ABEBC6"},
   Backlogged: {label:"Backlogged", icon:"↓", bg:"#EAECEE", tx:"#566573", border:"#D5DBDB"},
@@ -2349,6 +2351,12 @@ function rmInitStatusDisplay(item){
   if(s === "Not Funded") return RM_INIT_STATUS_CFG["Not Funded"];
   if(s === "Proposed")   return RM_INIT_STATUS_CFG.Proposed;
   return null;
+}
+function rmIsConcept(item){
+  return Boolean(item && (item.isConcept || RM_CONCEPT_IDS[item.id] || item.planningStatus === "Concept"));
+}
+function RmConceptBadge(){
+  return <span title="Concept" style={{fontSize:8,fontWeight:800,width:16,height:16,borderRadius:4,display:"inline-flex",alignItems:"center",justifyContent:"center",background:STATUS_CFG.Concept.bg,color:STATUS_CFG.Concept.tx,border:"1px solid #D7BDE2",marginTop:1}}>C</span>;
 }
 function rmExtractParentId(p){
   if(!p) return "";
@@ -2532,6 +2540,7 @@ function rmNormalizeRows(rows){
       var planningStatus = "";
       if(/^active$/i.test(rawStatus))                  planningStatus = "Active";
       else if(/^proposed$/i.test(rawStatus))           planningStatus = "Proposed";
+      else if(/^concept/i.test(rawStatus))            planningStatus = "Concept";
       else if(/^complete/i.test(rawStatus) || /^completed/i.test(rawStatus)) planningStatus = "Complete";
       else if(/^backlog/i.test(rawStatus))             planningStatus = "Backlogged";
       else if(/not\s*funded/i.test(rawStatus) || /unfunded/i.test(rawStatus)) planningStatus = "Not Funded";
@@ -2551,6 +2560,7 @@ function rmNormalizeRows(rows){
         impactIfLate: rmNf(r["impact if late"]),
         mitigationNotes: rmNf(r["mitigation / notes"], r["mitigation notes"]),
         notes: cleanNotes.length ? cleanNotes.join("\n") : null,
+        isConcept: Boolean(RM_CONCEPT_IDS[id] || planningStatus === "Concept"),
         description: rmNf(r["short description (for publishing)"], r["short description"], r["summary"], r["description"]) || null,
         goalOwner: rmNf(r["goal owner"], r["goal owner name"]),
         obj: rmNf(r["26 obj"], r["objective"], r["obj"], r["objective #"], r["obj #"]),
@@ -2768,7 +2778,7 @@ function RoadmapView(props){
   var [items, setItems] = useState([]);
   var [startM, setStartM] = useState(RM_DEFAULT_RANGE.start);
   var [endM, setEndM] = useState(RM_DEFAULT_RANGE.end);
-  var [groupBy, setGroupBy] = useState("goal");
+  var [groupBy, setGroupBy] = useState("type");
   var [grouped, setGrouped] = useState(true);
   var [showAud, setShowAud] = useState(true);
   var [showLeg, setShowLeg] = useState(true);
@@ -2777,8 +2787,9 @@ function RoadmapView(props){
   var [sortBy, setSortBy] = useState("start");
   var [search, setSearch] = useState("");
   var [fGoals, setFGoals] = useState([]);
-  var [fTypes, setFTypes] = useState([]);
+  var [fTypes, setFTypes] = useState(["Participant"]);
   var [fAwardees, setFAwardees] = useState([]);
+  var [flaggedOnly, setFlaggedOnly] = useState(false);
   var [expandedRaw, setExpandedRaw] = useState(null);
   var [tooltip, setTooltip] = useState(null);
   var [depMode, setDepMode] = useState(false);
@@ -2809,6 +2820,29 @@ function RoadmapView(props){
     var flagging = cap.teams.filter(function(t){return t.staff === "N";});
     return flagging.length > 0 ? flagging : null;
   }
+
+  function awardeesFromCapacity(initId){
+    var cap = capData[initId] || capData[String(initId || "").trim()];
+    if(!cap || !cap.teams || !cap.teams.length) return null;
+    var found = {};
+    cap.teams.forEach(function(t){
+      var n = String(t.name || "").toLowerCase();
+      if(n.indexOf("drc") === 0) found.DRC = true;
+      if(n.indexOf("ppsc") === 0) found.PPSC = true;
+      if(n === "biobank" || n === "biobank".toLowerCase()) found.Biobank = true;
+    });
+    var out = RM_AWARDEE_KEYS.filter(function(k){return found[k];});
+    return out.length ? out : null;
+  }
+
+  var roadmapItems = useMemo(function(){
+    return (items || []).map(function(item){
+      if(!item || item.cat !== "initiative") return item;
+      var capAwardees = awardeesFromCapacity(item.id);
+      if(capAwardees) return Object.assign({}, item, {awardees: capAwardees, awardeeSource: "capacity"});
+      return item;
+    });
+  }, [items, capData]);
 
   var flagDebug = useMemo(function(){
     var capIds = Object.keys(capData).filter(function(k){return k.indexOf("_") !== 0;});
@@ -2849,7 +2883,7 @@ function RoadmapView(props){
 
   var cols = useMemo(function(){ return rmGenMonths(VS, VE); }, [VS, VE]);
   var quarters = useMemo(function(){ return rmGroupByQuarter(cols); }, [cols]);
-  var allInit = useMemo(function(){ return items.filter(function(i){return i.cat === "initiative";}); }, [items]);
+  var allInit = useMemo(function(){ return roadmapItems.filter(function(i){return i.cat === "initiative";}); }, [roadmapItems]);
   var msItems = useMemo(function(){ return items.filter(function(i){return i.cat === "comms" || i.cat === "tech";}); }, [items]);
 
   var tbdHiddenCount = useMemo(function(){
@@ -2866,6 +2900,7 @@ function RoadmapView(props){
       if(fGoals.length && fGoals.indexOf(r.goal) === -1) return false;
       if(fTypes.length && fTypes.indexOf(r.type) === -1) return false;
       if(fAwardees.length && !fAwardees.some(function(a){return r.awardees && r.awardees.indexOf(a) !== -1;})) return false;
+      if(flaggedOnly && !noCapacityTeams(r.id)) return false;
       if(hideTBD && rmIsTBD(r)) return false;
       if(search){
         var q = search.toLowerCase();
@@ -2888,10 +2923,10 @@ function RoadmapView(props){
       return a.id.localeCompare(b.id);
     });
     return d;
-  }, [allInit, fGoals, fTypes, fAwardees, hideTBD, search, sortBy]);
+  }, [allInit, fGoals, fTypes, fAwardees, flaggedOnly, hideTBD, search, sortBy, capData, sortBy]);
 
-  var isAnyFilterActive = fGoals.length > 0 || fTypes.length > 0 || fAwardees.length > 0 || search !== "";
-  function clearFiltersOnly(){ setFGoals([]); setFTypes([]); setFAwardees([]); setSearch(""); }
+  var isAnyFilterActive = fGoals.length > 0 || fTypes.length > 0 || fAwardees.length > 0 || flaggedOnly || search !== "";
+  function clearFiltersOnly(){ setFGoals([]); setFTypes([]); setFAwardees([]); setFlaggedOnly(false); setSearch(""); }
 
   var getMs = useCallback(function(id){
     return msItems.filter(function(m){
@@ -2916,10 +2951,10 @@ function RoadmapView(props){
 
   function reset(){
     setStartM(RM_DEFAULT_RANGE.start); setEndM(RM_DEFAULT_RANGE.end);
-    setGroupBy("goal"); setSortBy("start");
+    setGroupBy("type"); setSortBy("start");
     setGrouped(true); setShowAud(true); setShowLeg(true); setHideTBD(true);
     setMilestoneView("both"); setSearch("");
-    setFGoals([]); setFTypes([]); setFAwardees([]);
+    setFGoals([]); setFTypes(["Participant"]); setFAwardees([]); setFlaggedOnly(false);
     setExpanded(null); setDepMode(false); setDepFocus(null);
   }
 
@@ -2938,7 +2973,7 @@ function RoadmapView(props){
     return {upstream:upstream, downstream:downstream};
   }, [allInit]);
 
-  var expItem = expanded ? items.find(function(i){return i.id === expanded;}) : null;
+  var expItem = expanded ? (roadmapItems.find(function(i){return i.id === expanded;}) || items.find(function(i){return i.id === expanded;})) : null;
   var expMs = expanded ? getMs(expanded) : [];
 
   var depFocusData = useMemo(function(){
@@ -2996,10 +3031,10 @@ function RoadmapView(props){
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:11,color:"#aaa"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
           {flagDebug.capRows > 0 && (
-            <span title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged}
-              style={{fontSize:10,padding:"3px 8px",borderRadius:10,background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:600,cursor:"help"}}>
-              🚧 {flagDebug.flagged} flagged
-            </span>
+            <button onClick={function(){if(flaggedOnly){setFlaggedOnly(false);} else {setFGoals([]); setFTypes([]); setFAwardees([]); setSearch(""); setHideTBD(false); setFlaggedOnly(true);}}} title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged+". Click to "+(flaggedOnly ? "clear" : "view")+" flagged items."}
+              style={{fontSize:10,padding:"3px 8px",borderRadius:10,border:"1px solid "+(flaggedOnly ? "#C0392B" : "transparent"),background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:700,cursor:"pointer"}}>
+              🚧 {flagDebug.flagged} flagged{flaggedOnly ? " ✓" : ""}
+            </button>
           )}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3095,7 +3130,8 @@ function RoadmapView(props){
             <span style={{display:"flex",alignItems:"center",gap:6}}><RmDiamondIcon sz={13}/><span>Key</span></span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-            <span style={{fontSize:9,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.5}}>Audience</span>
+            <span style={{fontSize:9,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.5}}>Badges</span>
+            <span style={{display:"flex",alignItems:"center",gap:5}}><RmConceptBadge/><span>Concept</span></span>
             {RM_TYPE_KEYS.map(function(t){return (
               <span key={t} style={{display:"flex",alignItems:"center",gap:5}}>
                 <span style={{fontSize:8,fontWeight:700,width:14,height:14,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[t],color:RM_TYPE_COLOR[t]}}>{RM_TYPE_SHORT[t]}</span>
@@ -3165,7 +3201,7 @@ function RoadmapView(props){
                           {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7,fontWeight:600,padding:"1px 3px",borderRadius:3,background:"#f0f0f0",color:"#ccc",border:"1px solid #e8e8e8"}}>TBD</span>}
                           {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8"}}>↔</span>}
                           {rs.label && <span title="Dependency role" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border}}>{rs.label}</span>}
-                          {noCapTeams && (
+                          {showAud && noCapTeams && (
                             <span
                               onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                               title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
@@ -3177,7 +3213,8 @@ function RoadmapView(props){
                             <span style={{fontSize:11.5,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={renderText(item.name)}>{renderText(item.name)}</span>
                             <span style={{fontSize:9,color:"#bbb",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                               {item.id}
-                              {rmInitStatusDisplay(item) && <span style={{marginLeft:6,fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,background:rmInitStatusDisplay(item).bg,color:rmInitStatusDisplay(item).tx,border:"1px solid "+rmInitStatusDisplay(item).border,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{rmInitStatusDisplay(item).icon} {rmInitStatusDisplay(item).label}</span>}
+                              {showAud && rmIsConcept(item) && <span style={{marginLeft:6}}><RmConceptBadge/></span>}
+                              {showAud && rmInitStatusDisplay(item) && <span style={{marginLeft:6,fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,background:rmInitStatusDisplay(item).bg,color:rmInitStatusDisplay(item).tx,border:"1px solid "+rmInitStatusDisplay(item).border,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{rmInitStatusDisplay(item).icon} {rmInitStatusDisplay(item).label}</span>}
                             </span>
                           </div>
                         </div>
@@ -3269,8 +3306,9 @@ function RoadmapView(props){
               <IdentityBlock init={expItem} goalsRef={{}} currentView="roadmap" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
               <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
                 <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
-                  {rmInitStatusDisplay(expItem) && <span style={{fontSize:9,fontWeight:800,padding:"2px 6px",borderRadius:4,background:rmInitStatusDisplay(expItem).bg,color:rmInitStatusDisplay(expItem).tx,border:"1px solid "+rmInitStatusDisplay(expItem).border}}>{rmInitStatusDisplay(expItem).icon} {rmInitStatusDisplay(expItem).label}</span>}
-                  {expItem.awardees && Array.isArray(expItem.awardees) && expItem.awardees.map(function(a){
+                  {showAud && rmIsConcept(expItem) && <RmConceptBadge/>}
+                  {showAud && rmInitStatusDisplay(expItem) && <span style={{fontSize:9,fontWeight:800,padding:"2px 6px",borderRadius:4,background:rmInitStatusDisplay(expItem).bg,color:rmInitStatusDisplay(expItem).tx,border:"1px solid "+rmInitStatusDisplay(expItem).border}}>{rmInitStatusDisplay(expItem).icon} {rmInitStatusDisplay(expItem).label}</span>}
+                  {showAud && expItem.awardees && Array.isArray(expItem.awardees) && expItem.awardees.map(function(a){
                     var cfg = RM_AWARDEE_CFG[a];
                     return cfg ? <span key={a} style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:cfg.bg,color:cfg.tx}}>{cfg.label}</span> : null;
                   })}
@@ -3356,7 +3394,7 @@ function RoadmapView(props){
                     <span style={{color:"#aaa"}}>Audience</span><span>{expItem.type || "—"}</span>
                     <span style={{color:"#aaa"}}>Start</span><span>{rmFmtDate(expItem.start) || "TBD"}</span>
                     <span style={{color:"#aaa"}}>End</span><span>{rmFmtDate(expItem.end) || "TBD"}</span>
-                    <span style={{color:"#aaa"}}>Awardees</span><span>{Array.isArray(expItem.awardees) && expItem.awardees.length > 0 ? expItem.awardees.join(", ") : "—"}</span>
+                    <span style={{color:"#aaa"}}>Awardees</span><span>{Array.isArray(expItem.awardees) && expItem.awardees.length > 0 ? expItem.awardees.join(", ") + (expItem.awardeeSource === "capacity" ? " (from Capacity performers)" : "") : "—"}</span>
                   </div>
                 </div>
                 {expMs.length > 0 && (
