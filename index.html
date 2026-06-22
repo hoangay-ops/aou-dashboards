@@ -2574,7 +2574,7 @@ function rmNormalizeRows(rows){
     } else if(!id && (icon === "star" || icon === "diamond")){
       var pid = rmExtractParentId(rmNf(r["parent"]));
       if(!pid) continue;
-      var mc2 = /tech readiness/i.test(cat) ? "tech readiness" : (cat === "Tech" || cat === "Comms" ? cat : "");
+      var mc2 = /tech readiness/i.test(cat) ? "tech readiness" : (cat === "tech" || cat === "comms" ? cat : "");
       mils.push({
         id:("MS-"+pid+"-"+icon+"-"+name+"-"+i).replace(/[^a-zA-Z0-9._-]+/g,"-").slice(0,80),
         name:name, start:rmNf(r["start"]) || null, end:rmNf(r["end"]) || null,
@@ -2887,7 +2887,7 @@ function RoadmapView(props){
   var cols = useMemo(function(){ return rmGenMonths(VS, VE); }, [VS, VE]);
   var quarters = useMemo(function(){ return rmGroupByQuarter(cols); }, [cols]);
   var allInit = useMemo(function(){ return roadmapItems.filter(function(i){return i.cat === "initiative";}); }, [roadmapItems]);
-  var msItems = useMemo(function(){ return items.filter(function(i){return i.cat === "Comms" || i.cat === "Tech";}); }, [items]);
+  var msItems = useMemo(function(){ return items.filter(function(i){return i.cat === "comms" || i.cat === "tech";}); }, [items]);
 
   var tbdHiddenCount = useMemo(function(){
     if(!hideTBD) return 0;
@@ -2944,8 +2944,8 @@ function RoadmapView(props){
   var getMs = useCallback(function(id){
     return msItems.filter(function(m){
       if(m.parent !== id) return false;
-      if(milestoneView === "Tech"  && m.icon !== "star") return false;
-      if(milestoneView === "Comms" && m.icon !== "diamond") return false;
+      if(milestoneView === "tech"  && m.icon !== "star") return false;
+      if(milestoneView === "comms" && m.icon !== "diamond") return false;
       return true;
     });
   }, [msItems, milestoneView]);
@@ -3049,7 +3049,7 @@ function RoadmapView(props){
           {flagDebug.capRows > 0 && (
             <button onClick={function(){setFlaggedOnly(!flaggedOnly);}} title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged+". Click to "+(flaggedOnly ? "clear" : "view")+" flagged items."}
               style={{fontSize:10.5,padding:"4px 9px",borderRadius:10,border:"1px solid "+(flaggedOnly ? "#C0392B" : "#E6B0AA"),background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:700,cursor:"pointer"}}>
-              🚧 {flagDebug.flagged} flagged{flaggedOnly ? " ✓" : ""}
+              Capacity {flagDebug.flagged}{flaggedOnly ? " ✓" : ""}
             </button>
           )}
           <button onClick={rmPrintRoadmap} title="Print the currently filtered roadmap" style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>Print</button>
@@ -3108,8 +3108,8 @@ function RoadmapView(props){
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontSize:9.5,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.05}}>Milestones</span>
           <RmSegBtn active={milestoneView === "both"} onClick={function(){setMilestoneView("both");}}>Both</RmSegBtn>
-          <RmSegBtn active={milestoneView === "Tech"} onClick={function(){setMilestoneView("Tech");}}>★ Launch</RmSegBtn>
-          <RmSegBtn active={milestoneView === "Comms"} onClick={function(){setMilestoneView("Comms");}}>◇ Key Milestone</RmSegBtn>
+          <RmSegBtn active={milestoneView === "tech"} onClick={function(){setMilestoneView("tech");}}>★ Launch</RmSegBtn>
+          <RmSegBtn active={milestoneView === "comms"} onClick={function(){setMilestoneView("comms");}}>◇ Key</RmSegBtn>
         </div>
         <RmSep/>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3141,7 +3141,7 @@ function RoadmapView(props){
           <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",paddingRight:22,marginRight:22,borderRight:"1px solid #ebebeb"}}>
             <span style={{fontSize:9,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.5}}>Markers</span>
             <span style={{display:"flex",alignItems:"center",gap:6}}><RmStarIcon sz={13}/><span>Launch</span></span>
-            <span style={{display:"flex",alignItems:"center",gap:6}}><RmDiamondIcon sz={13}/><span>Key Milestone</span></span>
+            <span style={{display:"flex",alignItems:"center",gap:6}}><RmDiamondIcon sz={13}/><span>Key</span></span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
             <span style={{fontSize:9,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.5}}>Badges</span>
@@ -3219,8 +3219,8 @@ function RoadmapView(props){
                             <span
                               onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                               title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
-                              style={{fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:2,marginTop:1}}>
-                              🚧 {noCapTeams.length}
+                              style={{fontSize:8,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:3,marginTop:1,whiteSpace:"nowrap"}}>
+                              Capacity {noCapTeams.length}
                             </span>
                           )}
                           <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:1}}>
@@ -3333,7 +3333,7 @@ function RoadmapView(props){
                   return (
                     <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#FDECEA",border:"1px solid #E6B0AA",borderLeft:"3px solid #C0392B"}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
-                        <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#922b21",fontWeight:800}}>🚧 No Capacity Flag ({teams.length})</div>
+                        <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#922b21",fontWeight:800}}>Capacity Flag ({teams.length})</div>
                         <button onClick={function(){props.onNavigateView("capacity", expItem.id);}} style={{fontSize:10,padding:"3px 8px",border:"1px solid #C0392B",borderRadius:4,background:"#fff",color:"#922b21",cursor:"pointer",fontWeight:600}}>view in Capacity →</button>
                       </div>
                       <div style={{fontSize:11.5,color:"#7B241C",lineHeight:1.5}}>
@@ -3457,8 +3457,8 @@ function RoadmapView(props){
             body:<>Inspector details show the shared identity block (Goal, Objective, POC), plus Roadmap-only Audience, Start, End, and Awardees.</>},
           {icon:"⚠", title:"Risks & TBD", color:"#C0392B", bg:"#FFF4F2",
             body:<><span style={{color:"#C0392B",fontWeight:800}}>⚠</span> Risks are highlighted in red. <strong>TBD</strong> items have no start, end, or quarter and can be hidden with the Hide TBD toggle.</>},
-          {icon:"🚧", title:"No-capacity flag", color:"#922b21", bg:"#FDECEA",
-            body:<>A <strong style={{background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",padding:"1px 4px",borderRadius:3,fontSize:9.5}}>🚧 N</strong> badge next to a row means N team(s) flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the badge to jump directly to that initiative on the Capacity tab.</>},
+          {icon:"🏷", title:"Capacity flag", color:"#922b21", bg:"#FDECEA",
+            body:<>A <strong style={{background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",padding:"1px 5px",borderRadius:4,fontSize:9.5}}>Capacity N</strong> badge next to a row means N team(s) flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the badge to jump directly to that initiative on the Capacity tab.</>},
           {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
             body:<>The <strong>Print</strong> button opens a clean, landscape-sized snapshot of the currently filtered roadmap in a new tab — ready to print or save as PDF.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
