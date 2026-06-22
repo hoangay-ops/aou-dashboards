@@ -291,6 +291,18 @@ const IS_ADMIN = (function(){
   } catch(e){ return false; }
 })();
 
+/* Roadmap-only mode is gated by URL param ?view=roadmap-only. Hides the tab
+   bar (only Roadmap renders), renames the header to "Program Roadmap", and
+   grays out the cross-view nav buttons in drill-downs so the Roadmap can be
+   shared standalone while QP and Capacity dashboards are still being polished. */
+const IS_ROADMAP_ONLY = (function(){
+  try {
+    var params = new URLSearchParams(window.location.search || "");
+    var v = (params.get("view") || "").toLowerCase();
+    return v === "roadmap-only" || v === "roadmap_only" || v === "roadmaponly";
+  } catch(e){ return false; }
+})();
+
 /* Darker text colors for goal labels — the spec palette is meant for fills,
    but the same hex used as readable text is too light (especially Goal 4 soft
    gold and Goal 6 light gray). These darker variants are used wherever the
@@ -529,9 +541,15 @@ function IdentityBlock(props){
       )}
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {props.currentView !== "qpe" && (
-          <button onClick={function(){props.onNavigateView("qpe", init.id);}} style={navLinkStyle}>
-            View in QPE →
-          </button>
+          IS_ROADMAP_ONLY ? (
+            <span title="Quarterly Planning dashboard is not yet available" style={Object.assign({}, navLinkStyle, {background:"#f5f5f5",color:"#bbb",borderColor:"#e8e8e8",cursor:"not-allowed",display:"inline-flex",alignItems:"center"})}>
+              View in QPE →
+            </span>
+          ) : (
+            <button onClick={function(){props.onNavigateView("qpe", init.id);}} style={navLinkStyle}>
+              View in QPE →
+            </button>
+          )
         )}
         {props.currentView !== "roadmap" && (
           <button onClick={function(){props.onNavigateView("roadmap", init.id);}} style={navLinkStyle}>
@@ -539,9 +557,15 @@ function IdentityBlock(props){
           </button>
         )}
         {props.currentView !== "capacity" && (
-          <button onClick={function(){props.onNavigateView("capacity", init.id);}} style={navLinkStyle}>
-            View in Capacity →
-          </button>
+          IS_ROADMAP_ONLY ? (
+            <span title="Capacity Planning dashboard is not yet available" style={Object.assign({}, navLinkStyle, {background:"#f5f5f5",color:"#bbb",borderColor:"#e8e8e8",cursor:"not-allowed",display:"inline-flex",alignItems:"center"})}>
+              View in Capacity →
+            </span>
+          ) : (
+            <button onClick={function(){props.onNavigateView("capacity", init.id);}} style={navLinkStyle}>
+              View in Capacity →
+            </button>
+          )
         )}
         {psiMapped ? (
           <a href={psiUrl} target="_blank" rel="noopener noreferrer" style={Object.assign({}, navLinkStyle, {textDecoration:"none",display:"inline-flex",alignItems:"center"})}>
