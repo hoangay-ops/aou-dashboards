@@ -9,20 +9,20 @@
 <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f8fa;color:#1a1a1a;overflow:hidden;font-size:14px;}
+html,body{min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f8fa;color:#1a1a1a;overflow:auto;font-size:14px;}
 button,select,input{font-family:inherit;}
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-thumb{background:#d8d8d8;border-radius:4px;}
 ::-webkit-scrollbar-thumb:hover{background:#bbb;}
 @keyframes spin{to{transform:rotate(360deg)}}
-.tab-bar{display:flex;background:#fff;border-bottom:1px solid #dbe7f3;padding:0 24px;flex-shrink:0;gap:6px;}
-.tab{padding:13px 22px;border:1px solid transparent;background:transparent;font-size:14px;font-weight:700;color:#6f7f8f;cursor:pointer;border-bottom:4px solid transparent;margin-bottom:-1px;transition:color .12s,border-color .12s,background .12s,box-shadow .12s;letter-spacing:.2px;border-radius:10px 10px 0 0;}
+.tab-bar{display:flex;background:#fff;border-bottom:1px solid #dbe7f3;padding:0 18px;flex-shrink:0;gap:5px;}
+.tab{padding:10px 18px;border:1px solid transparent;background:transparent;font-size:14px;font-weight:700;color:#6f7f8f;cursor:pointer;border-bottom:4px solid transparent;margin-bottom:-1px;transition:color .12s,border-color .12s,background .12s,box-shadow .12s;letter-spacing:.2px;border-radius:10px 10px 0 0;}
 .tab:hover{color:#2471A3;}
 .tab.active{color:#185FA5;border-color:#C8DCF0;border-bottom-color:#185FA5;background:#EBF5FB;box-shadow:inset 0 -1px 0 #185FA5;}
 </style>
 </head>
 <body>
-<div id="root" style="height:100%;display:flex;flex-direction:column;"></div>
+<div id="root" style="min-height:100vh;height:100vh;display:flex;flex-direction:column;"></div>
 <script type="text/babel" data-presets="env,react">
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -189,6 +189,9 @@ function addCacheBuster(url){
 
 function scrollViewportToTop(){
   try {
+    // Best effort for Google Sites embeds: keep internal scroll positions in sync,
+    // and ask the parent page to reveal the top of the embed when supported.
+    try { if(window.parent && window.parent !== window){ window.parent.postMessage({type:"aou-dashboard-scroll-top"}, "*"); } } catch(_e){}
     window.scrollTo({top: 0, left: 0, behavior: "auto"});
     if(document.documentElement) document.documentElement.scrollTop = 0;
     if(document.body) document.body.scrollTop = 0;
@@ -1792,7 +1795,7 @@ function CapTeamSummariesPanel(props){
   }
   var totalEntries = summaries.reduce(function(sum, s){return sum + s.entries.length;}, 0);
   return (
-    <div style={{background:"#fff",border:"1px solid #ececec",borderRadius:10,padding:"10px 12px 12px",marginBottom:12,boxShadow:"0 1px 2px rgba(0,0,0,.03)",maxHeight:"min(52vh, 520px)",minHeight:"360px",overflow:"hidden",display:"flex",flexDirection:"column",minWidth:0,flexShrink:0}}>
+    <div style={{background:"#fff",border:"1px solid #ececec",borderRadius:10,padding:"10px 12px 12px",marginBottom:12,boxShadow:"0 1px 2px rgba(0,0,0,.03)",maxHeight:"min(40vh, 420px)",minHeight:"240px",overflow:"hidden",display:"flex",flexDirection:"column",minWidth:0,flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:8,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"baseline",gap:8,minWidth:0}}>
           <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:.55,color:"#607080",fontWeight:800}}>Team Summaries</div>
@@ -2280,8 +2283,8 @@ function rmResolveGoal(rawValue){
 
 const RM_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const RM_MILESTONE_COLOR = "#F5A800";
-const RM_ROW_H = 36;
-const RM_LABEL_W = 264;
+const RM_ROW_H = 32;
+const RM_LABEL_W = 244;
 const RM_TYPE_KEYS  = ["Participant","Researcher","Internal/Consortium"];
 const RM_TYPE_COLOR = {"Participant":"#2471A3","Researcher":"#1E8449","Internal/Consortium":"#5D6D7E"};
 const RM_TYPE_SHORT = {"Participant":"P","Researcher":"R","Internal/Consortium":"I"};
@@ -2778,16 +2781,16 @@ function RoadmapView(props){
   var [items, setItems] = useState([]);
   var [startM, setStartM] = useState(RM_DEFAULT_RANGE.start);
   var [endM, setEndM] = useState(RM_DEFAULT_RANGE.end);
-  var [groupBy, setGroupBy] = useState("type");
+  var [groupBy, setGroupBy] = useState("goal");
   var [grouped, setGrouped] = useState(true);
   var [showAud, setShowAud] = useState(true);
   var [showLeg, setShowLeg] = useState(true);
   var [hideTBD, setHideTBD] = useState(true);
   var [milestoneView, setMilestoneView] = useState("both");
-  var [sortBy, setSortBy] = useState("start");
+  var [sortBy, setSortBy] = useState("goal");
   var [search, setSearch] = useState("");
   var [fGoals, setFGoals] = useState([]);
-  var [fTypes, setFTypes] = useState(["Participant"]);
+  var [fTypes, setFTypes] = useState([]);
   var [fAwardees, setFAwardees] = useState([]);
   var [flaggedOnly, setFlaggedOnly] = useState(false);
   var [expandedRaw, setExpandedRaw] = useState(null);
@@ -2909,6 +2912,16 @@ function RoadmapView(props){
       return true;
     });
     d.sort(function(a, b){
+      if(sortBy === "goal"){
+        var ga = rmGoalOrder(a.goal), gb = rmGoalOrder(b.goal);
+        if(ga !== gb) return ga - gb;
+        var gia = a.id.split(".").map(Number), gib = b.id.split(".").map(Number);
+        for(var gi = 0; gi < Math.max(gia.length, gib.length); gi++){
+          var gva = gia[gi] || 0, gvb = gib[gi] || 0;
+          if(gva !== gvb) return gva - gvb;
+        }
+        return a.name.localeCompare(b.name);
+      }
       if(sortBy === "start") return (a.start || "9999") > (b.start || "9999") ? 1 : -1;
       if(sortBy === "end")   return (a.end   || "9999") > (b.end   || "9999") ? 1 : -1;
       if(sortBy === "name")  return a.name.localeCompare(b.name);
@@ -2923,7 +2936,7 @@ function RoadmapView(props){
       return a.id.localeCompare(b.id);
     });
     return d;
-  }, [allInit, fGoals, fTypes, fAwardees, flaggedOnly, hideTBD, search, sortBy, capData, sortBy]);
+  }, [allInit, fGoals, fTypes, fAwardees, flaggedOnly, hideTBD, search, sortBy, capData]);
 
   var isAnyFilterActive = fGoals.length > 0 || fTypes.length > 0 || fAwardees.length > 0 || flaggedOnly || search !== "";
   function clearFiltersOnly(){ setFGoals([]); setFTypes([]); setFAwardees([]); setFlaggedOnly(false); setSearch(""); }
@@ -2951,10 +2964,10 @@ function RoadmapView(props){
 
   function reset(){
     setStartM(RM_DEFAULT_RANGE.start); setEndM(RM_DEFAULT_RANGE.end);
-    setGroupBy("type"); setSortBy("start");
+    setGroupBy("goal"); setSortBy("goal");
     setGrouped(true); setShowAud(true); setShowLeg(true); setHideTBD(true);
     setMilestoneView("both"); setSearch("");
-    setFGoals([]); setFTypes(["Participant"]); setFAwardees([]); setFlaggedOnly(false);
+    setFGoals([]); setFTypes([]); setFAwardees([]); setFlaggedOnly(false);
     setExpanded(null); setDepMode(false); setDepFocus(null);
   }
 
@@ -3027,18 +3040,18 @@ function RoadmapView(props){
 
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#fff"}}>
-      <div style={{padding:"6px 24px",borderBottom:"1px solid #ebebeb",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#fafafa"}}>
+      <div style={{padding:"4px 18px",borderBottom:"1px solid #ebebeb",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#fafafa"}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:11,color:"#aaa"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
+          <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
           {flagDebug.capRows > 0 && (
-            <button onClick={function(){if(flaggedOnly){setFlaggedOnly(false);} else {setFGoals([]); setFTypes([]); setFAwardees([]); setSearch(""); setHideTBD(false); setFlaggedOnly(true);}}} title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged+". Click to "+(flaggedOnly ? "clear" : "view")+" flagged items."}
-              style={{fontSize:10,padding:"3px 8px",borderRadius:10,border:"1px solid "+(flaggedOnly ? "#C0392B" : "transparent"),background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:700,cursor:"pointer"}}>
+            <button onClick={function(){setFlaggedOnly(!flaggedOnly);}} title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged+". Click to "+(flaggedOnly ? "clear" : "view")+" flagged items."}
+              style={{fontSize:10.5,padding:"4px 9px",borderRadius:10,border:"1px solid "+(flaggedOnly ? "#C0392B" : "#E6B0AA"),background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:700,cursor:"pointer"}}>
               🚧 {flagDebug.flagged} flagged{flaggedOnly ? " ✓" : ""}
             </button>
           )}
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
           <button onClick={rmPrintRoadmap} title="Print the currently filtered roadmap" style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>Print</button>
           <button onClick={reset} style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #e0e0e0",borderRadius:6,background:"#fff",cursor:"pointer"}}>Reset</button>
           <span style={{fontSize:11,color:"#aaa"}}>Showing</span>
@@ -3048,7 +3061,7 @@ function RoadmapView(props){
         </div>
       </div>
 
-      <div style={{padding:"8px 24px",borderBottom:"1px solid #ebebeb",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",background:"#fff"}}>
+      <div style={{padding:"6px 18px",borderBottom:"1px solid #ebebeb",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:"#fff"}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontSize:9.5,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.05}}>Range</span>
           <select style={{fontSize:11.5,padding:"4px 7px",border:"1px solid #e0e0e0",borderRadius:6}} value={startM} onChange={function(e){setStartM(e.target.value);}}>
@@ -3069,6 +3082,7 @@ function RoadmapView(props){
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontSize:9.5,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.05}}>Sort</span>
           <select style={{fontSize:11.5,padding:"4px 7px",border:"1px solid #e0e0e0",borderRadius:6}} value={sortBy} onChange={function(e){setSortBy(e.target.value);}}>
+            <option value="goal">Goal</option>
             <option value="start">Start date</option>
             <option value="end">End date</option>
             <option value="id">ID</option>
@@ -3115,7 +3129,7 @@ function RoadmapView(props){
       </div>
 
       {showLeg && (
-        <div style={{padding:"10px 24px",borderBottom:"1px solid #ebebeb",display:"flex",gap:0,alignItems:"center",flexWrap:"wrap",fontSize:11,color:"#888",background:"#fafafa",rowGap:6}}>
+        <div style={{padding:"7px 18px",borderBottom:"1px solid #ebebeb",display:"flex",gap:0,alignItems:"center",flexWrap:"wrap",fontSize:11,color:"#888",background:"#fafafa",rowGap:5}}>
           <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",paddingRight:22,marginRight:22,borderRight:"1px solid #ebebeb"}}>
             <span style={{fontSize:9,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.5}}>Goals</span>
             {Object.entries(GOALS).map(function(pair){var k = pair[0], g = pair[1];
@@ -3502,12 +3516,12 @@ function App(){
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{padding:"14px 24px",background:"#fff",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:12}}>
+      <div style={{padding:"10px 18px",background:"#fff",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:10}}>
         <div style={{minWidth:0}}>
           <div style={{fontSize:10.5,textTransform:"uppercase",letterSpacing:1.4,color:"#888",fontWeight:600,marginBottom:4}}>
             NIH · <AoU/> Research Program · {CYCLE.current}
           </div>
-          <div style={{fontSize:20,fontWeight:700,color:"#111",lineHeight:1.2,letterSpacing:-0.2}}>
+          <div style={{fontSize:18,fontWeight:700,color:"#111",lineHeight:1.2,letterSpacing:-0.2}}>
             Program Dashboards
           </div>
         </div>
@@ -3547,6 +3561,24 @@ function App(){
     </div>
   );
 }
+
+
+function notifyEmbedSize(){
+  try {
+    if(window.parent && window.parent !== window){
+      var h = Math.max(document.body.scrollHeight || 0, document.documentElement.scrollHeight || 0, document.getElementById("root") ? document.getElementById("root").scrollHeight : 0);
+      window.parent.postMessage({type:"aou-dashboard-resize", height:h}, "*");
+    }
+  } catch(e){}
+}
+try {
+  window.addEventListener("load", notifyEmbedSize);
+  window.addEventListener("resize", notifyEmbedSize);
+  if(window.ResizeObserver){
+    var _aouResizeObserver = new ResizeObserver(function(){ notifyEmbedSize(); });
+    setTimeout(function(){ var r = document.getElementById("root"); if(r) _aouResizeObserver.observe(r); }, 0);
+  }
+} catch(e){}
 
 function ErrorBoundary(props){
   React.Component.call(this, props);
