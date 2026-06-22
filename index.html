@@ -1356,6 +1356,7 @@ function QpeMainView(props){
                             </span>
                           </span>
                           {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
+                          {i.status === "Concept" && <Chip bg={STATUS_CFG.Concept.bg} tx={STATUS_CFG.Concept.tx} size={8.5}>Concept</Chip>}
                           {i.status === "Backlogged" && <Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx} size={8.5}>Backlogged</Chip>}
                           {i.status === "Complete" && <Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx} size={8.5}>Completed</Chip>}
                         </div>
@@ -1576,8 +1577,17 @@ function capFindHdr(rows){
   }
   return 0;
 }
-function capParseInitiatives(csvText){
+/* Parse initiatives for the Capacity view.
+   Exclusion rules:
+   - Always exclude Complete, Backlogged, Eliminated (no capacity decision needed)
+   - For Concept-type initiatives: include ONLY if the Capacity sheet has at
+     least one performer assignment for that ID. Concept items with no performer
+     engagement are excluded as in the original spec.
+   The capacityIds param is a set of IDs that appear with performers in the
+   Calculations tab; pass {} to fall back to strict spec exclusion. */
+function capParseInitiatives(csvText, capacityIds){
   if(!csvText) return [];
+  capacityIds = capacityIds || {};
   var rows = parseCSV(csvText);
   if(rows.length === 0) return [];
   var hi = capFindHdr(rows);
@@ -1595,8 +1605,14 @@ function capParseInitiatives(csvText){
     var q2s = get(row, "Q2 2026 Status", "Q2 Status");
     var status = capParseStatus(q3s) || capParseStatus(q2s);
     var projType = get(row, "Project Type", "Type");
-    var isConcept = /concept/i.test(projType);
-    if(status === "Complete" || status === "Concept" || status === "Eliminated" || status === "Backlogged" || isConcept) return acc;
+    var isConcept = /concept/i.test(projType) || status === "Concept";
+
+    // Always exclude these terminal/deferred states
+    if(status === "Complete" || status === "Eliminated" || status === "Backlogged") return acc;
+
+    // Concept items only included if they have capacity engagement
+    if(isConcept && !capacityIds[id]) return acc;
+
     acc.push({
       id:id, name:name, goal:g, status:status,
       isNew: /^new\b/i.test(projType),
@@ -1614,9 +1630,10 @@ function capParseInitiatives(csvText){
 }
 
 /* Count initiatives excluded by capacity exclusion rules, so the "X of Y"
-   chip can explain itself (Spec §4 transparency). */
-function capCountExcludedInitiatives(csvText){
+   chip can explain itself (Spec §4 transparency). Mirrors the rules above. */
+function capCountExcludedInitiatives(csvText, capacityIds){
   if(!csvText) return 0;
+  capacityIds = capacityIds || {};
   var rows = parseCSV(csvText);
   if(rows.length === 0) return 0;
   var hi = capFindHdr(rows);
@@ -1635,8 +1652,9 @@ function capCountExcludedInitiatives(csvText){
     var q2s = get(row, "Q2 2026 Status", "Q2 Status");
     var status = capParseStatus(q3s) || capParseStatus(q2s);
     var projType = get(row, "Project Type", "Type");
-    var isConcept = /concept/i.test(projType);
-    if(status === "Complete" || status === "Concept" || status === "Eliminated" || status === "Backlogged" || isConcept) count++;
+    var isConcept = /concept/i.test(projType) || status === "Concept";
+    if(status === "Complete" || status === "Eliminated" || status === "Backlogged") count++;
+    else if(isConcept && !capacityIds[id]) count++;
   });
   return count;
 }
@@ -2143,21 +2161,34 @@ function CapacityView(props){
   function setDrill(v){ setDrillRaw(v); if(v) scrollViewportToTop(); }
   var drill = drillRaw;
 
-  var initiatives = useMemo(function(){
-    if(data.state.status !== "ready") return [];
-    return capParseInitiatives(data.state.planningCsv);
-  }, [data.state.status, data.state.planningCsv]);
-
-  /* Count of initiatives excluded from capacity, for the "X of Y" explainer */
-  var excludedCount = useMemo(function(){
-    if(data.state.status !== "ready") return 0;
-    return capCountExcludedInitiatives(data.state.planningCsv);
-  }, [data.state.status, data.state.planningCsv]);
-
   var capData = useMemo(function(){
     if(data.state.status !== "ready") return {_mismatches: []};
     return capParseCapacity(data.state.capacityCsv);
   }, [data.state.status, data.state.capacityCsv]);
+
+  /* Set of initiative IDs that have at least one performer assignment on the
+     Capacity sheet. Used to decide whether Concept-type initiatives should be
+     surfaced in the Capacity view. */
+  var capacityIds = useMemo(function(){
+    var s = {};
+    Object.keys(capData).forEach(function(k){
+      if(k.indexOf("_") === 0) return;
+      var c = capData[k];
+      if(c && c.performers > 0) s[k] = true;
+    });
+    return s;
+  }, [capData]);
+
+  var initiatives = useMemo(function(){
+    if(data.state.status !== "ready") return [];
+    return capParseInitiatives(data.state.planningCsv, capacityIds);
+  }, [data.state.status, data.state.planningCsv, capacityIds]);
+
+  /* Count of initiatives excluded from capacity, for the "X of Y" explainer */
+  var excludedCount = useMemo(function(){
+    if(data.state.status !== "ready") return 0;
+    return capCountExcludedInitiatives(data.state.planningCsv, capacityIds);
+  }, [data.state.status, data.state.planningCsv, capacityIds]);
 
   var goalsRef = useMemo(function(){
     if(data.state.status !== "ready") return {};
