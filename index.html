@@ -2602,7 +2602,14 @@ const RM_AWARDEE_CFG = {
   PPSC:    {label:"PPSC",    color:"#117A65",bg:"#E8F8F5",tx:"#117A65"},
   Biobank: {label:"Biobank", color:"#B3541E",bg:"#FDF2E9",tx:"#B3541E"},
 };
+
 const RM_AWARDEE_KEYS = ["DRC","PPSC","Biobank"];
+const RM_INIT_STATUS_CFG = {
+  Complete:   {label:"Complete",   icon:"✓", bg:"#D5F5E3", tx:"#1E8449", border:"#ABEBC6"},
+  Backlogged: {label:"Backlogged", icon:"⏸", bg:"#EAECEE", tx:"#566573", border:"#D5DBDB"},
+  Proposed:   {label:"Proposed",   icon:"◆", bg:"#FEF5E7", tx:"#9A6800", border:"#F4D03F"},
+  "Not Funded": {label:"Not Funded", icon:"⊘", bg:"#FDECEA", tx:"#943126", border:"#E6B0AA"},
+};
 
 function rmParseDate(s){
   if(!s) return null;
