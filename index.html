@@ -3225,27 +3225,27 @@ function RoadmapView(props){
                       var rowBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : (capacityFlagged ? "#FFF7F6" : "transparent"));
                       return (
                         <div key={item.id} onClick={function(){selectInitiative(item.id);}}
-                          style={{height:RM_ROW_H,display:"flex",alignItems:"flex-start",gap:4,padding:"7px 6px 0 10px",borderBottom:"1px solid "+(capacityFlagged ? "#F1C6C0" : "#f5f5f5"),borderLeft: capacityFlagged ? "3px solid #C0392B" : (role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none")),overflow:"hidden",cursor:"pointer",background: rowBg,opacity: rs.opacity}}
+                          style={{height:RM_ROW_H,display:"flex",alignItems:"flex-start",gap:4,padding:"7px 22px 0 10px",borderBottom:"1px solid "+(capacityFlagged ? "#F1C6C0" : "#f5f5f5"),borderLeft: capacityFlagged ? "3px solid #C0392B" : (role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none")),overflow:"hidden",cursor:"pointer",background: rowBg,opacity: rs.opacity,position:"relative"}}
                           onMouseEnter={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background=capacityFlagged ? "#FFF0EE" : "#f7fafd";}}
                           onMouseLeave={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background=capacityFlagged ? "#FFF7F6" : "transparent";}}>
-                          {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:14,height:14,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",marginTop:1,flexShrink:0}}>{RM_TYPE_SHORT[item.type]}</span>}
                           {showAud && capacityFlagged && (
                             <span
                               onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                               title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
-                              style={{fontSize:10,fontWeight:900,width:14,height:14,borderRadius:3,background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",marginTop:1,flexShrink:0,lineHeight:1}}>
+                              style={{position:"absolute",right:6,top:8,fontSize:12,fontWeight:900,color:"#F5A800",cursor:"pointer",lineHeight:1,background:"transparent",border:"none",padding:0,zIndex:2}}>
                               ⚠
                             </span>
                           )}
+                          {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:14,height:14,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",marginTop:1,flexShrink:0}}>{RM_TYPE_SHORT[item.type]}</span>}
                           {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7,fontWeight:600,padding:"1px 3px",borderRadius:3,background:"#f0f0f0",color:"#ccc",border:"1px solid #e8e8e8",flexShrink:0}}>TBD</span>}
                           {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8",flexShrink:0}}>↔</span>}
                           {rs.label && <span title="Dependency role" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border,flexShrink:0}}>{rs.label}</span>}
                           <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:1}}>
                             <span style={{fontSize:11.5,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={renderText(item.name)}>{renderText(item.name)}</span>
-                            <span style={{fontSize:9,color:"#bbb",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                              {item.id}
-                              {showAud && rmIsConcept(item) && <span style={{marginLeft:6}}><RmConceptBadge/></span>}
-                              {showAud && rmInitStatusDisplay(item) && <span style={{marginLeft:6,fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,background:rmInitStatusDisplay(item).bg,color:rmInitStatusDisplay(item).tx,border:"1px solid "+rmInitStatusDisplay(item).border,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{rmInitStatusDisplay(item).icon} {rmInitStatusDisplay(item).label}</span>}
+                            <span style={{fontSize:9,color:"#bbb",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:5,lineHeight:"13px",minHeight:13}}>
+                              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{item.id}</span>
+                              {showAud && rmIsConcept(item) && <RmConceptBadge/>}
+                              {showAud && rmInitStatusDisplay(item) && <span style={{fontSize:8,fontWeight:700,padding:"0px 5px",borderRadius:4,background:rmInitStatusDisplay(item).bg,color:rmInitStatusDisplay(item).tx,border:"1px solid "+rmInitStatusDisplay(item).border,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",lineHeight:"12px",flexShrink:0}}>{rmInitStatusDisplay(item).icon} {rmInitStatusDisplay(item).label}</span>}
                             </span>
                           </div>
                         </div>
@@ -3477,7 +3477,7 @@ function RoadmapView(props){
           {icon:"⚠", title:"Risks & TBD", color:"#C0392B", bg:"#FFF4F2",
             body:<><span style={{color:"#C0392B",fontWeight:800}}>⚠</span> Risks are highlighted in red. <strong>TBD</strong> items have no start, end, or quarter and can be hidden with the Hide TBD toggle.</>},
           {icon:"⚠", title:"Capacity flag", color:"#922b21", bg:"#FDECEA",
-            body:<>A lightly tinted row with a small <strong style={{color:"#922b21"}}>⚠</strong> icon means one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the warning icon to jump directly to that initiative on the Capacity tab.</>},
+            body:<>A lightly tinted row with a small <strong style={{color:"#F5A800"}}>⚠</strong> icon means one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the warning icon to jump directly to that initiative on the Capacity tab.</>},
           {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
             body:<>The <strong>Print</strong> button opens a clean, landscape-sized snapshot of the currently filtered roadmap in a new tab — ready to print or save as PDF.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
