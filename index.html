@@ -2596,8 +2596,8 @@ function rmResolveGoal(rawValue){
 
 const RM_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const RM_MILESTONE_COLOR = "#F5A800";
-const RM_ROW_H = 38;
-const RM_LABEL_W = 260;
+const RM_ROW_H = 44;
+const RM_LABEL_W = 300;
 const RM_TYPE_KEYS  = ["Participant","Researcher","Internal/Consortium"];
 const RM_TYPE_COLOR = {"Participant":"#2471A3","Researcher":"#1E8449","Internal/Consortium":"#5D6D7E"};
 const RM_TYPE_SHORT = {"Participant":"P","Researcher":"R","Internal/Consortium":"I"};
@@ -3386,7 +3386,7 @@ function RoadmapView(props){
                 cursor:"pointer",fontWeight:600,
                 display:"inline-flex",alignItems:"center",gap:5,
               }}>
-              <span style={{fontSize:12,lineHeight:1}}>⚠</span>
+              <span style={{fontSize:10,lineHeight:1,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center",width:14,height:14,borderRadius:3,background:flaggedOnly ? "#fff" : "#C0392B",color:flaggedOnly ? "#C0392B" : "#fff"}}>!</span>
               {flaggedOnly ? "Showing flagged ("+flaggedCount+") · click to clear" : "View flagged ("+flaggedCount+")"}
             </button>
           )}
@@ -3545,41 +3545,47 @@ function RoadmapView(props){
                       var role = depRole(item.id), rs = rmDepRelationStyle(role);
                       var noCapTeams = noCapacityTeams(item.id);
                       var capacityFlagged = Boolean(showAud && noCapTeams);
-                      var rowBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : (capacityFlagged ? "#FFF7F6" : "transparent"));
+                      var rowBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : "transparent");
                       return (
                         <div key={item.id} onClick={function(){selectInitiative(item.id);}}
-                          style={{height:RM_ROW_H,display:"flex",alignItems:"flex-start",gap:4,padding:"5px 24px 0 12px",borderBottom:"1px solid "+(capacityFlagged ? "#F1C6C0" : "#f5f5f5"),borderLeft: capacityFlagged ? "3px solid #C0392B" : (role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none")),overflow:"hidden",cursor:"pointer",background: rowBg,opacity: rs.opacity,position:"relative"}}
-                          onMouseEnter={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background=capacityFlagged ? "#FFF0EE" : "#f7fafd";}}
-                          onMouseLeave={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background=capacityFlagged ? "#FFF7F6" : "transparent";}}>
+                          style={{height:RM_ROW_H,display:"grid",gridTemplateColumns:"68px minmax(0,1fr)",alignItems:"stretch",padding:"0 24px 0 0",borderBottom:"1px solid #f5f5f5",borderLeft: role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none"),overflow:"hidden",cursor:"pointer",background: rowBg,opacity: rs.opacity,position:"relative"}}
+                          onMouseEnter={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="#f7fafd";}}
+                          onMouseLeave={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="transparent";}}>
                           {showAud && capacityFlagged && (
                             <span
                               onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                               title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
                               style={{
-                                position:"absolute",right:7,top:12,
-                                fontSize:13,fontWeight:800,
-                                color:"#F5A800",
-                                background:"transparent",
+                                position:"absolute",right:7,top:14,
+                                fontSize:10,fontWeight:800,
+                                color:"#fff",
+                                background:"#C0392B",
                                 cursor:"pointer",lineHeight:1,
                                 border:"none",
-                                padding:0,
-                                borderRadius:0,
+                                padding:"2px 5px",
+                                borderRadius:3,
                                 zIndex:2,
                               }}>
-                              ⚠
+                              !
                             </span>
                           )}
-                          <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:2,paddingRight:capacityFlagged ? 18 : 0}}>
-                            <span style={{fontSize:12.2,fontWeight:650,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:"16px"}} title={renderText(item.name)}>{renderText(item.name)}</span>
-                            <span style={{fontSize:9.5,color:"#a3adb7",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:5,lineHeight:"16px",minHeight:16}}>
-                              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,maxWidth:70}}>{item.id}</span>
-                              {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:15,height:15,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{RM_TYPE_SHORT[item.type]}</span>}
+                          <div style={{height:"100%",display:"flex",flexDirection:"column",justifyContent:"center",gap:2,padding:"0 6px 0 9px",borderRight:"1px solid #eef0f2",background:"rgba(250,251,252,.72)",minWidth:0}}>
+                            <span style={{fontSize:9.5,color:"#8f9aa5",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:"14px"}}>{item.id}</span>
+                            <span style={{display:"flex",alignItems:"center",gap:4,minHeight:16,lineHeight:"16px"}}>
                               {showAud && rmIsConcept(item) && <RmConceptBadge/>}
                               {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7,fontWeight:600,padding:"1px 3px",borderRadius:3,background:"#f0f0f0",color:"#aaa",border:"1px solid #e8e8e8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>TBD</span>}
+                            </span>
+                          </div>
+                          <div style={{minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:3,padding:"0 6px 0 9px",paddingRight:capacityFlagged ? 18 : 6}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                              {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:15,height:15,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{RM_TYPE_SHORT[item.type]}</span>}
+                              <span style={{fontSize:12.2,fontWeight:650,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:"16px",minWidth:0}} title={renderText(item.name)}>{renderText(item.name)}</span>
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:4,minHeight:13,lineHeight:"13px",overflow:"hidden"}}>
                               {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>↔</span>}
                               {rs.label && <span title="Dependency role" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border,flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{rs.label}</span>}
                               {showAud && rmInitStatusDisplay(item) && <span style={{fontSize:8,fontWeight:700,padding:"0px 5px",borderRadius:4,background:rmInitStatusDisplay(item).bg,color:rmInitStatusDisplay(item).tx,border:"1px solid "+rmInitStatusDisplay(item).border,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",lineHeight:"12px",flexShrink:0}}>{rmInitStatusDisplay(item).icon} {rmInitStatusDisplay(item).label}</span>}
-                            </span>
+                            </div>
                           </div>
                         </div>
                       );
@@ -3606,7 +3612,7 @@ function RoadmapView(props){
                         var w = (l2 !== null && r2 !== null) ? r2 - l2 : 0;
                         var hasDates = rmHasFullDates(item), barCol = GOALS[item.goal] ? GOALS[item.goal].color : "#888", isDone = rmIsComplete(item);
                         var capacityFlagged = Boolean(showAud && noCapacityTeams(item.id));
-                        var timelineBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : (capacityFlagged ? "#FFF7F6" : "transparent"));
+                        var timelineBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : "transparent");
                         var ms = getMs(item.id);
                         var spread = rmSpreadMs(ms, function(d, isEnd){return pct(d, isEnd, true);});
                         var qCol = (!hasDates && item.quarter) ? rmFindQuarterCol(item.quarter, cols) : null;
@@ -3614,7 +3620,7 @@ function RoadmapView(props){
                         var qR = qCol ? pct(qCol.end.toLocaleDateString("en-US"), true) : null;
                         var qW = (qL !== null && qR !== null) ? qR - qL : 0;
                         return (
-                          <div key={item.id} style={{height:RM_ROW_H,position:"relative",borderBottom:"1px solid "+(capacityFlagged ? "#F1C6C0" : "#f5f5f5"),background:timelineBg,opacity:rs.opacity}}>
+                          <div key={item.id} style={{height:RM_ROW_H,position:"relative",borderBottom:"1px solid #f5f5f5",background:timelineBg,opacity:rs.opacity}}>
                             <RmGridLines n={cols.length} faint={true}/>
                             {hasDates && w > 0.2 && (
                               <div onClick={function(){selectInitiative(item.id);}} title={renderText(item.name)}
@@ -3801,8 +3807,8 @@ function RoadmapView(props){
             body:<><span style={{color:"#F5A800",fontWeight:800}}>★</span> Launch milestones and <span style={{color:"#F5A800",fontWeight:800}}>◇</span> key milestones sit on the parent initiative timeline. Hover for date and category; use the milestone filter to show one type.</>},
           {icon:"↔", title:"Dependency mode", color:"#7D6608", bg:"#FFF9EC",
             body:<>Turn on <strong>↔ Dependency mode</strong>, then click an initiative. The focus row turns amber, upstream dependencies turn yellow, impacted downstream rows turn blue, and unrelated rows fade.</>},
-          {icon:"⚠", title:"Capacity flag", color:"#C0392B", bg:"#FDECEA",
-            body:<>Rows with a subtle tint and a yellow <strong style={{color:"#F5A800",fontSize:12,fontWeight:800}}>⚠</strong> mean one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the warning icon to jump directly to that initiative on the Capacity tab, or use the <strong>View flagged</strong> button at the top to filter to all flagged items at once.</>},
+          {icon:"!", title:"Capacity flag", color:"#C0392B", bg:"#FDECEA",
+            body:<>Rows with a small red <strong style={{background:"#C0392B",color:"#fff",padding:"1px 5px",borderRadius:3,fontSize:10,fontWeight:800}}>!</strong> badge mean one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the badge to jump directly to that initiative on the Capacity tab, or use the <strong>View flagged</strong> button at the top to filter to all flagged items at once.</>},
           {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
             body:<>The <strong>Print</strong> button opens a clean, landscape-sized snapshot of the currently filtered roadmap in a new tab — ready to print or save as PDF.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
