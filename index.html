@@ -25,11 +25,6 @@ button,select,input{font-family:inherit;}
 <div id="root" style="min-height:100vh;height:100vh;display:flex;flex-direction:column;"></div>
 <script type="text/babel" data-presets="env,react">
 
-/* ════════════════════════════════════════════════════════════════════════════
-   PART 1 OF 2: Constants, helpers, shared components, data loader, QPE view.
-   PART 2 will be appended in the next update: Capacity, Roadmap, App shell.
-   ════════════════════════════════════════════════════════════════════════════ */
-
 /* SHARED CONSTANTS */
 const CYCLE = {
   current:       "Q3 2026",
@@ -49,13 +44,17 @@ const ROADMAP_SHEET_GID = "0";
 const ROADMAP_PUBLISHED_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRr51VQ4ujPMXvw_OkJ_76flVbz5zy3CVjyW6-bwX2Q6B6UJ6lzuKzDaEuZQhwzIMOTpx8sXImEk_L-/pub?gid="+ROADMAP_SHEET_GID+"&single=true&output=csv";
 const ROADMAP_EXPORT_CSV    = "https://docs.google.com/spreadsheets/d/"+ROADMAP_SHEET_ID+"/export?format=csv&gid="+ROADMAP_SHEET_GID+"&single=true";
 
+/* Canonical Goals per Dashboard Consistency Spec §2.4 and §6.
+   `name` is the long-form (used in headers, drill-downs, tooltips).
+   `short` is the abbreviated form (used in narrow chips, charts, timeline labels).
+   Hex values are canonical — do not drift. */
 const GOALS = {
-  "1":{num:"1",name:"Enrollment & Retention",       short:"Enrollment & Retention",color:"#5EAEE0"},
-  "2":{num:"2",name:"Data to Researchers",          short:"Data to Researchers",   color:"#7AC79B"},
-  "3":{num:"3",name:"Partnered Research Studies",   short:"Partnered Research",    color:"#F58D77"},
-  "4":{num:"4",name:"Researcher Access",            short:"Researcher Access",     color:"#F0C04F"},
-  "5":{num:"5",name:"Return of Value",              short:"Return of Value",       color:"#F2728C"},
-  "6":{num:"6",name:"Management & Ops",             short:"Management & Ops",      color:"#D8D8D8"},
+  "1":{num:"1",name:"Enrollment & Retention",            short:"Enrollment & Retention",color:"#5EAEE0"},
+  "2":{num:"2",name:"Data Available to Researchers",     short:"Data to Researchers",   color:"#7AC79B"},
+  "3":{num:"3",name:"Partnered Research Studies",        short:"Partnered Research",    color:"#F58D77"},
+  "4":{num:"4",name:"Researcher Access & Impact",        short:"Researcher Access",     color:"#FFDD7F"},
+  "5":{num:"5",name:"Participant Return of Value",       short:"Return of Value",       color:"#F2728C"},
+  "6":{num:"6",name:"Management & Operations",           short:"Management & Ops",      color:"#D8D8D8"},
 };
 
 const TAXONOMY_REF = {
@@ -66,7 +65,7 @@ const TAXONOMY_REF = {
     "1.4": {name:"PRS Participants", owner:"Holly Garriock"},
     "1.5": {name:"Digital Experience", owner:"Holly Garriock"}
   }},
-  "2": {name:"Data to Researchers", owner:"Geoff Ginsburg", objectives:{
+  "2": {name:"Data Available to Researchers", owner:"Geoff Ginsburg", objectives:{
     "2.1": {name:"Scientific Strategy", owner:"Geoff Ginsburg"},
     "2.2": {name:"Core Data", owner:"Jen Adjemian"},
     "2.3": {name:"New Data Contribution", owner:""},
@@ -78,19 +77,19 @@ const TAXONOMY_REF = {
     "3.2": {name:"Manage PRS Portfolio", owner:"Sheri Schully"},
     "3.3": {name:"PRS Population Characteristics", owner:"Janeth Sanchez"}
   }},
-  "4": {name:"Researcher Access", owner:"Minnkyong Lee", objectives:{
+  "4": {name:"Researcher Access & Impact", owner:"Minnkyong Lee", objectives:{
     "4.1": {name:"Registered Researchers", owner:"James McClain"},
     "4.2": {name:"Research Output", owner:"Romey Azuine"},
     "4.3": {name:"Partner Tier", owner:"James McClain"},
     "4.4": {name:"Publications", owner:"Geoff Ginsburg"}
   }},
-  "5": {name:"Return of Value", owner:"Janeth Sanchez", objectives:{
+  "5": {name:"Participant Return of Value", owner:"Janeth Sanchez", objectives:{
     "5.1": {name:"Participant & Community Engagement", owner:"Yong Crosby"},
     "5.2": {name:"Participant-Focused Outreach", owner:"Rachele Peterson"},
     "5.3": {name:"Offer DNA Results", owner:"N/A"},
     "5.4": {name:"Expand Delivery of RoV Initiatives", owner:"Janeth Sanchez"}
   }},
-  "6": {name:"Management & Ops", owner:"Stephanie Devaney", objectives:{
+  "6": {name:"Management & Operations", owner:"Stephanie Devaney", objectives:{
     "6.1": {name:"Data Management", owner:"Jen Adjemian"},
     "6.2": {name:"Participant Analytics", owner:"Jon Kim"},
     "6.3": {name:"Resource Optimization", owner:"Stephanie Devaney"},
@@ -110,8 +109,6 @@ const STATUS_CFG = {
 
 /* SHARED HELPERS */
 
-/* renderText: defensive wrapper for any value rendered as a React child.
-   Prevents React error #31 by stringifying non-primitive values safely. */
 function renderText(value, fallback){
   if(fallback === undefined) fallback = "";
   if(value == null) return fallback;
@@ -189,8 +186,6 @@ function addCacheBuster(url){
 
 function scrollViewportToTop(){
   try {
-    // Best effort for Google Sites embeds: keep internal scroll positions in sync,
-    // and ask the parent page to reveal the top of the embed when supported.
     try { if(window.parent && window.parent !== window){ window.parent.postMessage({type:"aou-dashboard-scroll-top"}, "*"); } } catch(_e){}
     window.scrollTo({top: 0, left: 0, behavior: "auto"});
     if(document.documentElement) document.documentElement.scrollTop = 0;
@@ -244,17 +239,41 @@ function parsePsiUrlMap(csvText){
   var get = makeRowAccessor(header);
   var map = {};
   body.forEach(function(row){
-    // Try ID column under any of these names. If the cell contains the ID
-    // followed by the name (e.g. "2.1.8 - CLAD Data Workstreams" or
-    // "2.1.8 CLAD Data Workstreams"), extract just the leading ID prefix.
     var rawId = get(row, "ID", "Initiative ID", "Init ID", "Initiative ID and Name", "Initiative", "Initiative Name");
     var idMatch = String(rawId || "").match(/^\s*(\d+(?:\.\d+)+)/);
     var id = idMatch ? idMatch[1] : String(rawId || "").trim();
-    // URL column — accept any header containing "url", "link", or "psi".
     var url = get(row, "PSI URL", "URL", "Link", "PSI Link", "PSI URL Link", "Page URL");
     if(id && url) map[id] = String(url).trim();
   });
   return map;
+}
+
+/* Cycle-label drift detection per Dashboard Consistency Spec §5.
+   Scans the planning sheet header row for the most-recent "Q[N] [YYYY] Status"
+   column and compares the implied quarter against CYCLE.current.
+   Returns null if aligned, or {expected, found} when mismatched. */
+function detectCycleDrift(planningCsv, expectedCycle){
+  if(!planningCsv) return null;
+  var rows = parseCSV(planningCsv);
+  if(!rows.length) return null;
+  var hi = 0;
+  for(var i=0;i<Math.min(5,rows.length);i++){
+    var normed = rows[i].map(normHeader);
+    if(normed.indexOf("id") !== -1) { hi = i; break; }
+  }
+  var header = rows[hi] || [];
+  var sheetQuarter = null;
+  for(var i = 0; i < header.length; i++){
+    var h = normHeader(header[i]);
+    var m = h.match(/^q(\d)\s*(\d{4})\s*status/);
+    if(m){
+      var label = "Q" + m[1] + " " + m[2];
+      if(!sheetQuarter || label > sheetQuarter) sheetQuarter = label;
+    }
+  }
+  if(!sheetQuarter) return null;
+  if(sheetQuarter === expectedCycle) return null;
+  return {expected: expectedCycle, found: sheetQuarter};
 }
 
 /* SHARED COMPONENTS */
@@ -291,6 +310,50 @@ function StatusChip(props){
   var c = STATUS_CFG[s];
   if(!c) return null;
   return <Chip bg={c.bg} tx={c.tx} size={props.size}>{s}</Chip>;
+}
+
+/* Project Type chip per Spec §2.2. Independent from Status. */
+function ProjectTypeChip(props){
+  var pt = props.projectType;
+  if(!pt) return null;
+  if(/^new\b/i.test(pt)) return <Chip bg="#FEF5E7" tx="#9A6800" size={props.size}>NEW</Chip>;
+  if(/concept/i.test(pt)) return <Chip bg="#F4ECF7" tx="#6C3483" size={props.size}>Concept</Chip>;
+  if(/initiative/i.test(pt)) return <Chip bg="#EAECEE" tx="#566573" size={props.size}>Initiative</Chip>;
+  return <Chip bg="#EAECEE" tx="#566573" size={props.size}>{pt}</Chip>;
+}
+
+/* Data quality flag icon per Spec §9. Hover for explanation. */
+function DQFlag(props){
+  if(!props.issue) return null;
+  return (
+    <span title={props.issue}
+      style={{display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,cursor:"help",color:"#B7950B",marginLeft:4,lineHeight:1,verticalAlign:"middle"}}
+      aria-label={"Data quality flag: "+props.issue}>
+      ⚠
+    </span>
+  );
+}
+
+/* Detect data quality issues on an initiative per Project Instructions
+   "If asked to flag issues" list. Returns array of {field, issue} strings. */
+function detectDQIssues(init){
+  if(!init) return [];
+  var out = [];
+  if(!init.shortDesc && !init.fullDesc) out.push({field:"description", issue:"Short description not provided"});
+  if(!init.objOwner && !init.poc) out.push({field:"owner", issue:"Owner / Objective Owner not assigned"});
+  var isConceptType = /concept/i.test(init.projectType || "") || init.status === "Concept";
+  if(isConceptType && (init.q2Rank != null || init.q3Rank != null)){
+    out.push({field:"rank", issue:"Concept-type initiatives should not be ranked"});
+  }
+  if(isConceptType && (init.status === "Committed")){
+    out.push({field:"projectType", issue:"Status 'Committed' conflicts with Project Type 'Concept'"});
+  }
+  return out;
+}
+function dqIssueFor(issues, field){
+  if(!issues || !issues.length) return null;
+  var hit = issues.find(function(i){return i.field === field;});
+  return hit ? hit.issue : null;
 }
 
 function MultiSelect(props){
@@ -366,6 +429,9 @@ const navLinkStyle = {
   cursor:"pointer",fontWeight:500
 };
 
+/* IdentityBlock per Spec §1 — ID, Name, Goal, Objective, Status chip,
+   Project Type chip, Owner, View in PSI. Adds DQ flags inline per Spec §9
+   and a destination-excluded explainer per Spec §3 (Capacity view only). */
 function IdentityBlock(props){
   var init = props.init;
   var goalsRef = props.goalsRef || {};
@@ -375,25 +441,63 @@ function IdentityBlock(props){
   var gRef = goalsRef[init.goal] || {};
   var goalDetail = formatGoalDetail(init.goal, gRef.name, gRef.owner || init.goalOwner);
   var objDetail = formatObjectiveDetail(init.obj, init.objName, init.objOwner);
+  var dqIssues = detectDQIssues(init);
+  var psiMapped = init.id && props.psiUrlMap && props.psiUrlMap[init.id];
+  var psiUrl = buildPsiUrl(init, props.psiUrlMap);
+
+  var isConceptType = /concept/i.test(init.projectType || "") || init.status === "Concept";
+  var capacityExcluded = isConceptType ||
+    init.status === "Complete" || init.status === "Backlogged" || init.status === "Eliminated";
 
   return (
     <div style={{padding:"14px 18px",background:"#fafbfc",borderBottom:"1px solid #ececec"}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
         <span style={{fontFamily:"monospace",fontSize:11,color:"#999"}}>{renderText(init.id)}</span>
-        {init.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={9}>NEW</Chip>}
       </div>
       <div style={{fontSize:15,fontWeight:700,lineHeight:1.3,color:"#111",marginBottom:10}}>
         {renderText(init.name)}
       </div>
-      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
+      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10,alignItems:"center"}}>
         <GoalChipFull g={init.goal}/>
         <StatusChip status={init.status} isNew={init.isNew}/>
+        <ProjectTypeChip projectType={init.projectType}/>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:4,fontSize:11.5,lineHeight:1.45,marginBottom:10}}>
-        <div style={{color:"#333"}}><strong>Goal:</strong> {goalDetail}</div>
-        <div style={{color:"#333"}}><strong>Objective:</strong> {objDetail}</div>
-        <div style={{color:"#333"}}><strong>POC / PdM:</strong> {renderText(init.poc, "—")}</div>
+        <div style={{color:"#333"}}>
+          <strong>Goal:</strong> {goalDetail}
+        </div>
+        <div style={{color:"#333"}}>
+          <strong>Objective:</strong> {objDetail}
+        </div>
+        <div style={{color:"#333"}}>
+          <strong>POC / PdM:</strong> {renderText(init.poc, "—")}
+          <DQFlag issue={dqIssueFor(dqIssues, "owner")}/>
+        </div>
+        {dqIssueFor(dqIssues, "description") && (
+          <div style={{color:"#7D6608",fontSize:10.5,fontStyle:"italic"}}>
+            <DQFlag issue={dqIssueFor(dqIssues, "description")}/> Description pending
+          </div>
+        )}
+        {dqIssueFor(dqIssues, "rank") && (
+          <div style={{color:"#7D6608",fontSize:10.5}}>
+            <DQFlag issue={dqIssueFor(dqIssues, "rank")}/> {dqIssueFor(dqIssues, "rank")}
+          </div>
+        )}
+        {dqIssueFor(dqIssues, "projectType") && (
+          <div style={{color:"#7D6608",fontSize:10.5}}>
+            <DQFlag issue={dqIssueFor(dqIssues, "projectType")}/> {dqIssueFor(dqIssues, "projectType")}
+          </div>
+        )}
       </div>
+      {props.currentView === "capacity" && capacityExcluded && (
+        <div style={{padding:"6px 10px",marginBottom:10,background:"#F4ECF7",border:"1px solid #D7BDE2",borderRadius:5,fontSize:10.5,color:"#6C3483",lineHeight:1.4}}>
+          Initiative <strong>{init.id}</strong> is excluded from Capacity Planning
+          {isConceptType ? " because its Project Type is Concept." :
+           init.status === "Complete" ? " because it is Complete." :
+           init.status === "Backlogged" ? " because it is Backlogged." :
+           " because it has been Eliminated."}
+        </div>
+      )}
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {props.currentView !== "qpe" && (
           <button onClick={function(){props.onNavigateView("qpe", init.id);}} style={navLinkStyle}>
@@ -410,9 +514,38 @@ function IdentityBlock(props){
             View in Capacity →
           </button>
         )}
-        <a href={buildPsiUrl(init, props.psiUrlMap)} target="_blank" rel="noopener noreferrer" style={Object.assign({}, navLinkStyle, {textDecoration:"none",display:"inline-flex",alignItems:"center"})}>
-          View in PSI ↗
-        </a>
+        {psiMapped ? (
+          <a href={psiUrl} target="_blank" rel="noopener noreferrer" style={Object.assign({}, navLinkStyle, {textDecoration:"none",display:"inline-flex",alignItems:"center"})}>
+            View in PSI ↗
+          </a>
+        ) : (
+          <span title="No PSI link assigned for this initiative"
+            style={Object.assign({}, navLinkStyle, {background:"#f5f5f5",color:"#aaa",borderColor:"#e0e0e0",cursor:"not-allowed",display:"inline-flex",alignItems:"center",gap:3})}>
+            PSI link <DQFlag issue="PSI link not assigned"/>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* Banner used across views for cycle-label drift, per Spec §5. */
+function CycleDriftBanner(props){
+  if(!props.drift) return null;
+  return (
+    <div style={{padding:"10px 24px",background:"#FEF9E7",borderBottom:"1px solid #F5E6A8",color:"#7D6608",fontSize:12,flexShrink:0}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+        <span style={{fontSize:16,lineHeight:1.2}}>⚠️</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,marginBottom:4}}>Cycle label mismatch</div>
+          <div style={{fontSize:11,lineHeight:1.5}}>
+            Dashboard shows <strong>{props.drift.expected}</strong>, sheet shows <strong>{props.drift.found}</strong>.
+            Update the <code style={{background:"#fff",padding:"1px 4px",borderRadius:3,fontFamily:"monospace"}}>CYCLE</code> constant in the dashboard code, or rotate the planning sheet headers to match. Until aligned, all three dashboards may show stale data.
+          </div>
+        </div>
+        {props.onDismiss && (
+          <button onClick={props.onDismiss} title="Dismiss" style={{border:"none",background:"none",color:"#7D6608",fontSize:18,cursor:"pointer",lineHeight:1,padding:"0 4px",flexShrink:0}}>×</button>
+        )}
       </div>
     </div>
   );
@@ -614,6 +747,7 @@ function qpeNormalizePlanning(csvText){
       status: qpeParseStatus(q3s) || qpeParseStatus(q2s) || qpeParseStatus(prev) || qpeParseStatus(pt),
       history: history, q2Rank:q2r, q3Rank:q3r,
       isNew: /^new\b/i.test(pt),
+      projectType: pt,
       fullDesc: get(row, "Initiative Full Description", "Full Description", "Description"),
       shortDesc: get(row, "Short Description (for publishing)", "Short Description") ||
                  get(row, "Initiative Full Description", "Full Description", "Description"),
@@ -730,8 +864,6 @@ function QpeDrillPanel(props){
 
   return (
     <div ref={function(el){
-      // When the drill panel mounts, scroll it into view at the top of the
-      // viewport. Works in standalone tabs and inside the Google Site iframe.
       if(el){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
     }} data-drilldown-panel="qpe" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
       <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
@@ -1276,7 +1408,7 @@ function QpeView(props){
         {anyFilter && <button onClick={clearAll} style={{fontSize:11.5,background:"none",border:"none",color:"#C0392B",cursor:"pointer",fontWeight:500}}>✕ Clear</button>}
         <div style={{flex:1}}/>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}}/>
-        <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,background:"#fff",border:"1px solid #ececec",color:"#888"}}><strong style={{color:"#333"}}>{filtered.length}</strong> of {initiatives.length}</span>
+        <span title="Showing initiatives in current cycle, after active filters." style={{fontSize:11,padding:"3px 9px",borderRadius:20,background:"#fff",border:"1px solid #ececec",color:"#888"}}><strong style={{color:"#333"}}>{filtered.length}</strong> of {initiatives.length} in cycle</span>
         <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
       </div>
 
@@ -1301,11 +1433,11 @@ function QpeView(props){
           {icon:"🔎", title:"Filters & search", color:"#117A65", bg:"#F4FFFB",
             body:<>Use Focus, Status, New only, and Search to narrow the visible planning set. <strong>Clear</strong> resets the current filters.</>},
           {icon:"📄", title:"Initiative drill-down", color:"#B3541E", bg:"#FFF8F2",
-            body:<>Drill-downs use the shared identity block: <strong>ID</strong>, <strong>Name</strong>, <strong>Goal</strong>, <strong>Objective</strong>, <strong>Status</strong>, and <strong>POC/PdM</strong>. Cross-view buttons jump to the same initiative in Roadmap or Capacity.</>},
+            body:<>Drill-downs use the shared identity block: <strong>ID</strong>, <strong>Name</strong>, <strong>Goal</strong>, <strong>Objective</strong>, <strong>Status</strong>, <strong>Project Type</strong>, and <strong>POC/PdM</strong>. Cross-view buttons jump to the same initiative in Roadmap or Capacity.</>},
+          {icon:"⚠", title:"Data quality flags", color:"#7D6608", bg:"#FFF9EC",
+            body:<>An amber <strong>⚠</strong> next to a field means a flagged issue: missing owner, missing description, Concept items with ranks, or a Status/Project Type conflict. Hover for the explanation.</>},
           {icon:"📊", title:"Capacity signal", color:"#1E8449", bg:"#F4FFF7",
             body:<>The Capacity signal in each drill-down summarizes Confidence Index and performer counts. Click <strong>full view →</strong> to jump to that initiative on the Capacity tab.</>},
-          {icon:"⭐", title:"CEO ranks & NEW badges", color:"#9A6800", bg:"#FFF9EC",
-            body:<><strong>★ #N</strong> shows the CEO-ratified rank from the previous quarter. <strong>NEW</strong> badges mark initiatives proposed for the first time this cycle.</>},
         ]}
         glossarySection={{
           title:"Status & badge glossary",
@@ -1316,7 +1448,8 @@ function QpeView(props){
               <span><Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx}>Backlogged</Chip> deferred</span>
               <span><Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx}>Complete</Chip> finished</span>
               <span><Chip bg={STATUS_CFG["Not Funded"].bg} tx={STATUS_CFG["Not Funded"].tx}>Not Funded</Chip> not funded this cycle</span>
-              <span><Chip bg="#FEF5E7" tx="#9A6800">NEW</Chip> new proposed initiative</span>
+              <span><Chip bg="#FEF5E7" tx="#9A6800">NEW</Chip> new project type this cycle</span>
+              <span><Chip bg="#F4ECF7" tx="#6C3483">Concept</Chip> exploratory, excluded from capacity</span>
               <span><strong style={{color:"#9A6800"}}>★ #N</strong> CEO-ratified rank from {CYCLE.previous}</span>
             </div>
           )
@@ -1330,9 +1463,14 @@ function QpeView(props){
    CAPACITY VIEW
    ════════════════════════════════════════════════════════════════════════════ */
 
+/* Canonical team order per Dashboard Consistency Spec and Strategic Planning
+   Project Instructions. Order is load-bearing: the Capacity Calculations tab
+   reads by column position (col N + idx*5). If the sheet column order changes,
+   either restore it or update this array, NOT both silently.
+   Innovation retired Q3 2026 — count is 22 (12 NIH + 10 awardees). */
 const CAP_TEAMS = [
-  "Chief of Staff","COO","DCD","DMSR","DMSR (ODA)","Engagement","OFM",
-  "Policy","Product","TPC","UX","DTPD","BioBank",
+  "Chief of Staff","COO","DCD","DMSR","DMSR (ODA)","Engagement","OFM","TPC",
+  "Policy","Product","UX","DTPD","BioBank",
   "DRC: Analytics","DRC: Curation","DRC: RDR","DRC: HealthPro","DRC: Public","DRC: Workbench",
   "PPSC: NORC","PPSC: IBM","PPSC: Support Center"
 ];
@@ -1410,6 +1548,7 @@ function capParseInitiatives(csvText){
     acc.push({
       id:id, name:name, goal:g, status:status,
       isNew: /^new\b/i.test(projType),
+      projectType: projType,
       obj: get(row, "26 Obj", "Objective", "Obj", "Objective #", "Obj #"),
       objOwner: get(row, "Obj Owner", "Objective Owner", "Owner"),
       poc: get(row, "POC or PdM", "POC", "PdM"),
@@ -1420,6 +1559,34 @@ function capParseInitiatives(csvText){
     });
     return acc;
   }, []);
+}
+
+/* Count initiatives excluded by capacity exclusion rules, so the "X of Y"
+   chip can explain itself (Spec §4 transparency). */
+function capCountExcludedInitiatives(csvText){
+  if(!csvText) return 0;
+  var rows = parseCSV(csvText);
+  if(rows.length === 0) return 0;
+  var hi = capFindHdr(rows);
+  var hdr = rows[hi];
+  var body = rows.slice(hi+1);
+  var get = makeRowAccessor(hdr);
+  var count = 0;
+  body.forEach(function(row){
+    var id = get(row, "ID");
+    var name = get(row, "Initiative Name", "Name");
+    if(!id || !name) return;
+    var gm = String(get(row, "5 year Goal", "Goal", "5-year Goal")).match(/(\d)/);
+    var g = gm ? gm[1] : "";
+    if(!GOALS[g]) return;
+    var q3s = get(row, "Q3 2026 Status", "Q3 Status");
+    var q2s = get(row, "Q2 2026 Status", "Q2 Status");
+    var status = capParseStatus(q3s) || capParseStatus(q2s);
+    var projType = get(row, "Project Type", "Type");
+    var isConcept = /concept/i.test(projType);
+    if(status === "Complete" || status === "Concept" || status === "Eliminated" || status === "Backlogged" || isConcept) count++;
+  });
+  return count;
 }
 
 function capParseCapacity(csvText){
@@ -1929,6 +2096,12 @@ function CapacityView(props){
     return capParseInitiatives(data.state.planningCsv);
   }, [data.state.status, data.state.planningCsv]);
 
+  /* Count of initiatives excluded from capacity, for the "X of Y" explainer */
+  var excludedCount = useMemo(function(){
+    if(data.state.status !== "ready") return 0;
+    return capCountExcludedInitiatives(data.state.planningCsv);
+  }, [data.state.status, data.state.planningCsv]);
+
   var capData = useMemo(function(){
     if(data.state.status !== "ready") return {_mismatches: []};
     return capParseCapacity(data.state.capacityCsv);
@@ -2083,6 +2256,9 @@ function CapacityView(props){
     {w:185,  th:"Capacity",   key:"committed"},
   ];
 
+  var totalIncludingExcluded = health.total + excludedCount;
+  var inclusionNote = "Excludes "+excludedCount+" Concept/Complete/Backlogged/Eliminated initiative"+(excludedCount === 1 ? "" : "s")+". Showing "+health.total+" of "+totalIncludingExcluded+" total.";
+
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       {!bannerDismissed && <CapMismatchBanner mismatches={mismatches} onDismiss={function(){setBannerDismissed(true);}}/>}
@@ -2090,7 +2266,7 @@ function CapacityView(props){
       <div style={{padding:"12px 24px 8px",background:"#fff",borderBottom:"1px solid #ececec",flexShrink:0}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(118px,1fr))",gap:10}}>
           {[
-            {icon:null,  label:"Total",    val:health.total,  sub:"initiatives",col:"#4b6378",k:"all",noFilter:true},
+            {icon:null,  label:"Total",    val:health.total,  sub:"in capacity",col:"#4b6378",k:"all",noFilter:true, tooltip:inclusionNote},
             {icon:"🟢", label:"On Track",  val:health.high,   sub:"CI 8–10",   col:"#1E8449",k:"high"},
             {icon:"🟡", label:"Monitor",   val:health.med,    sub:"CI 6–7",    col:"#B7950B",k:"med"},
             {icon:"🔴", label:"At Risk",   val:health.risk,   sub:"CI ≤ 5",    col:"#C0392B",k:"risk"},
@@ -2099,6 +2275,7 @@ function CapacityView(props){
             var active = tierFilter === t.k && !t.noFilter;
             return (
               <div key={t.label}
+                title={t.tooltip || ""}
                 onClick={function(){if(!t.noFilter) setTierFilter(tierFilter === t.k ? "all" : t.k);}}
                 style={{
                   background:active ? "#F4FAFF" : "#fff",
@@ -2123,6 +2300,10 @@ function CapacityView(props){
               <div style={{fontSize:9.5,opacity:.68,color:"#607080",marginTop:2}}>program avg</div>
             </div>
           )}
+        </div>
+        {/* Spec §4 inclusion/exclusion transparency */}
+        <div style={{marginTop:6,fontSize:10.5,color:"#8a98a8",fontStyle:"italic"}}>
+          {inclusionNote}
         </div>
       </div>
 
@@ -2228,6 +2409,8 @@ function CapacityView(props){
             body:<><strong style={{color:"#1E8449"}}>8–10 On Track</strong>, <strong style={{color:"#B7950B"}}>6–7 Monitor</strong>, and <strong style={{color:"#C0392B"}}>≤5 At Risk</strong>. The CI pill and metric tiles use these same colors. Click a metric tile to filter the list.</>},
           {icon:"✓~✗", title:"Staffing responses", color:"#B7950B", bg:"#FFF9EC",
             body:<><span style={{color:"#1E8449",fontWeight:800}}>✓</span> Definitely, <span style={{color:"#B7950B",fontWeight:800}}>~</span> Possibly, and <span style={{color:"#C0392B",fontWeight:800}}>✗</span> No Capacity. The mini-bar in each row shows the staffing breakdown; size chips show XS/S/M/L/XL effort.</>},
+          {icon:"🚫", title:"What's excluded", color:"#6C3483", bg:"#FBF7FF",
+            body:<>This view excludes Concept-type initiatives and any with status Complete, Backlogged, or Eliminated. The hint under the metric tiles explains the math: showing X of total Y. Use cross-view nav to find excluded initiatives in QPE or Roadmap.</>},
           {icon:"👥", title:"Performer filter", color:"#2471A3", bg:"#F4FAFF",
             body:<>Select one or more performers to show horizontal Team Summary cards at the top of the workspace. Use <strong>↓ Export CSV</strong> to download the team's visible responses; use <strong>↓ Export all</strong> to combine multiple teams in one CSV.</>},
           {icon:"🎯", title:"Goal Health", color:"#6C3483", bg:"#FBF7FF",
@@ -2295,7 +2478,6 @@ const RM_AWARDEE_CFG = {
   Biobank: {label:"Biobank", color:"#B3541E",bg:"#FDF2E9",tx:"#B3541E"},
 };
 const RM_AWARDEE_KEYS = ["DRC","PPSC","Biobank"];
-const RM_CONCEPT_IDS = {"1.5.16":true,"5.2.10":true};
 const RM_INIT_STATUS_CFG = {
   Complete:   {label:"Complete", icon:"✓", bg:"#D5F5E3", tx:"#1E8449", border:"#ABEBC6"},
   Backlogged: {label:"Backlogged", icon:"↓", bg:"#EAECEE", tx:"#566573", border:"#D5DBDB"},
@@ -2356,7 +2538,7 @@ function rmInitStatusDisplay(item){
   return null;
 }
 function rmIsConcept(item){
-  return Boolean(item && (item.isConcept || RM_CONCEPT_IDS[item.id] || item.planningStatus === "Concept"));
+  return Boolean(item && (item.isConcept || item.planningStatus === "Concept" || /concept/i.test(item.projectType || "")));
 }
 function RmConceptBadge(){
   return <span title="Concept" style={{fontSize:8,fontWeight:800,width:12,height:12,lineHeight:"12px",borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:STATUS_CFG.Concept.bg,color:STATUS_CFG.Concept.tx,border:"1px solid #D7BDE2",verticalAlign:"middle",flexShrink:0}}>C</span>;
@@ -2478,6 +2660,7 @@ function rmParsePlanningLookup(csvText){
       objName: get(row, "Objective Name", "Obj Name"),
       objOwner: get(row, "Obj Owner", "Objective Owner", "Owner"),
       goalNum: gm ? gm[1] : "",
+      projectType: get(row, "Project Type", "Type"),
     };
   });
   return map;
@@ -2563,7 +2746,7 @@ function rmNormalizeRows(rows){
         impactIfLate: rmNf(r["impact if late"]),
         mitigationNotes: rmNf(r["mitigation / notes"], r["mitigation notes"]),
         notes: cleanNotes.length ? cleanNotes.join("\n") : null,
-        isConcept: Boolean(RM_CONCEPT_IDS[id] || planningStatus === "Concept"),
+        isConcept: planningStatus === "Concept",
         description: rmNf(r["short description (for publishing)"], r["short description"], r["summary"], r["description"]) || null,
         goalOwner: rmNf(r["goal owner"], r["goal owner name"]),
         obj: rmNf(r["26 obj"], r["objective"], r["obj"], r["objective #"], r["obj #"]),
@@ -2606,6 +2789,8 @@ function rmEnrichRows(rows, planningLookup){
     if(p.objName) out.objName = p.objName;
     if(p.objOwner) out.objOwner = p.objOwner;
     if(p.goalNum && GOALS[p.goalNum]) out.goal = p.goalNum;
+    if(p.projectType) out.projectType = p.projectType;
+    if(p.projectType && /concept/i.test(p.projectType)) out.isConcept = true;
     return out;
   });
 }
@@ -2855,20 +3040,6 @@ function RoadmapView(props){
     });
   }, [items, capData]);
 
-  var flagDebug = useMemo(function(){
-    var capIds = Object.keys(capData).filter(function(k){return k.indexOf("_") !== 0;});
-    var matched = 0, flagged = 0;
-    (items || []).forEach(function(it){
-      if(it.cat !== "initiative") return;
-      if(capData[it.id]){
-        matched++;
-        var teams = noCapacityTeams(it.id);
-        if(teams) flagged++;
-      }
-    });
-    return {capRows: capIds.length, matched: matched, flagged: flagged};
-  }, [items, capData]);
-
   useEffect(function(){
     if(props.selectedInitiativeId && items.length > 0){
       var match = items.find(function(i){return i.cat === "initiative" && i.id === props.selectedInitiativeId;});
@@ -3061,13 +3232,6 @@ function RoadmapView(props){
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
-          {flagDebug.capRows > 0 && (
-            <button onClick={function(){setFlaggedOnly(!flaggedOnly);}} title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged+". Click to "+(flaggedOnly ? "clear" : "view")+" flagged items."}
-              style={{fontSize:14,padding:"2px 7px",borderRadius:8,border:"1px solid transparent",background:flaggedOnly ? "#FFF4D6" : "transparent",color:flagDebug.flagged > 0 ? "#F5A800" : "#bbb",fontWeight:900,cursor:"pointer",lineHeight:1,display:"inline-flex",alignItems:"center",gap:4}}
-              aria-label={"Show capacity-flagged initiatives ("+flagDebug.flagged+")"}>
-              <span style={{fontSize:15,lineHeight:1}}>⚠</span><span style={{fontSize:11,fontWeight:800,color:flaggedOnly ? "#9A6800" : "#777"}}>{flagDebug.flagged}</span>
-            </button>
-          )}
           <button onClick={rmPrintRoadmap} title="Print the currently filtered roadmap" style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>Print</button>
           <button onClick={reset} style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #e0e0e0",borderRadius:6,background:"#fff",cursor:"pointer"}}>Reset</button>
           <span style={{fontSize:11,color:"#aaa"}}>Showing</span>
@@ -3233,7 +3397,7 @@ function RoadmapView(props){
                             <span
                               onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                               title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
-                              style={{position:"absolute",right:7,top:11,fontSize:13,fontWeight:900,color:"#F5A800",cursor:"pointer",lineHeight:1,background:"transparent",border:"none",padding:0,zIndex:2}}>
+                              style={{position:"absolute",right:7,top:11,fontSize:13,fontWeight:900,color:"#C0392B",cursor:"pointer",lineHeight:1,background:"transparent",border:"none",padding:0,zIndex:2}}>
                               ⚠
                             </span>
                           )}
@@ -3323,7 +3487,7 @@ function RoadmapView(props){
                 {todayP !== null && todayP >= 0 && todayP <= 100 && (
                   <>
                     <div style={{position:"absolute",top:0,bottom:0,left:"calc("+todayP+"% - 12px)",width:24,background:"rgba(192,57,43,.03)",zIndex:3,pointerEvents:"none"}}/>
-                    <div style={{position:"absolute",top:0,bottom:0,left:todayP+"%",width:1.5,background:"#C0392B",opacity:.6,zIndex:5,pointerEvents:"none"}}>
+                    <div style={{position:"absolute",top:0,bottom:0,left:todayP+"%",width:1.5,background:"#C0392B",opacity:.6,zIndex:20,pointerEvents:"none"}}>
                       <div style={{position:"absolute",top:2,left:2,fontSize:7.5,fontWeight:700,background:"#C0392B",color:"#fff",padding:"1px 4px",borderRadius:2,whiteSpace:"nowrap",lineHeight:1.2}}>Today</div>
                     </div>
                   </>
@@ -3340,8 +3504,6 @@ function RoadmapView(props){
               <IdentityBlock init={expItem} goalsRef={{}} currentView="roadmap" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
               <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
                 <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
-                  {showAud && rmIsConcept(expItem) && <RmConceptBadge/>}
-                  {showAud && rmInitStatusDisplay(expItem) && <span style={{fontSize:9,fontWeight:800,padding:"2px 6px",borderRadius:4,background:rmInitStatusDisplay(expItem).bg,color:rmInitStatusDisplay(expItem).tx,border:"1px solid "+rmInitStatusDisplay(expItem).border}}>{rmInitStatusDisplay(expItem).icon} {rmInitStatusDisplay(expItem).label}</span>}
                   {showAud && expItem.awardees && Array.isArray(expItem.awardees) && expItem.awardees.map(function(a){
                     var cfg = RM_AWARDEE_CFG[a];
                     return cfg ? <span key={a} style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:cfg.bg,color:cfg.tx}}>{cfg.label}</span> : null;
@@ -3471,14 +3633,8 @@ function RoadmapView(props){
             body:<><span style={{color:"#F5A800",fontWeight:800}}>★</span> Launch milestones and <span style={{color:"#F5A800",fontWeight:800}}>◇</span> key milestones sit on the parent initiative timeline. Hover for date and category; use the milestone filter to show one type.</>},
           {icon:"↔", title:"Dependency mode", color:"#7D6608", bg:"#FFF9EC",
             body:<>Turn on <strong>↔ Dependency mode</strong>, then click an initiative. The focus row turns amber, upstream dependencies turn yellow, impacted downstream rows turn blue, and unrelated rows fade.</>},
-          {icon:"🔎", title:"Dependency impact", color:"#1F618D", bg:"#F4FAFF",
-            body:<>The inspector panel shows structured dependency type, required-by date, impact if late, mitigation notes, plus clickable <strong>Depends on</strong> and <strong>Potentially impacted</strong> lists.</>},
-          {icon:"🏷", title:"Roadmap details", color:"#607080", bg:"#fff",
-            body:<>Inspector details show the shared identity block (Goal, Objective, POC), plus Roadmap-only Audience, Start, End, and Awardees.</>},
-          {icon:"⚠", title:"Risks & TBD", color:"#C0392B", bg:"#FFF4F2",
-            body:<><span style={{color:"#C0392B",fontWeight:800}}>⚠</span> Risks are highlighted in red. <strong>TBD</strong> items have no start, end, or quarter and can be hidden with the Hide TBD toggle.</>},
-          {icon:"⚠", title:"Capacity flag", color:"#922b21", bg:"#FDECEA",
-            body:<>A lightly tinted row with a small <strong style={{color:"#F5A800"}}>⚠</strong> icon means one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the warning icon to jump directly to that initiative on the Capacity tab.</>},
+          {icon:"⚠", title:"Capacity flag", color:"#C0392B", bg:"#FDECEA",
+            body:<>A lightly tinted row with a red <strong>⚠</strong> icon means one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the warning icon to jump directly to that initiative on the Capacity tab.</>},
           {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
             body:<>The <strong>Print</strong> button opens a clean, landscape-sized snapshot of the currently filtered roadmap in a new tab — ready to print or save as PDF.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
@@ -3509,12 +3665,21 @@ function RoadmapView(props){
 function App(){
   var [activeView, setActiveView] = useState("qpe");
   var [selectedInitiativeId, setSelectedInitiativeId] = useState(null);
+  var [driftDismissed, setDriftDismissed] = useState(false);
   var data = useDataLoader();
 
   var psiUrlMap = useMemo(function(){
     if(data.state.status !== "ready") return {};
     return parsePsiUrlMap(data.state.psiUrlsCsv);
   }, [data.state.status, data.state.psiUrlsCsv]);
+
+  // Cycle-label drift detection per Spec §5
+  var cycleDrift = useMemo(function(){
+    if(data.state.status !== "ready") return null;
+    return detectCycleDrift(data.state.planningCsv, CYCLE.current);
+  }, [data.state.status, data.state.planningCsv]);
+
+  useEffect(function(){ setDriftDismissed(false); }, [cycleDrift && cycleDrift.found]);
 
   var selectInitiative = useCallback(function(targetView, initiativeId){
     setActiveView(targetView);
@@ -3563,6 +3728,8 @@ function App(){
         </div>
       </div>
 
+      {!driftDismissed && <CycleDriftBanner drift={cycleDrift} onDismiss={function(){setDriftDismissed(true);}}/>}
+
       <div className="tab-bar">
         <button className={"tab"+(activeView==="qpe"?" active":"")} onClick={function(){handleTabClick("qpe");}}>
           Quarterly Planning
@@ -3581,7 +3748,6 @@ function App(){
     </div>
   );
 }
-
 
 function notifyEmbedSize(){
   try {
