@@ -707,13 +707,15 @@ function HelpButton(props){
    QPE VIEW
    ════════════════════════════════════════════════════════════════════════════ */
 
-const QPE_STATUS_KEYS = ["Committed","Proposed","Backlogged","Complete","Eliminated","Concept","Not Funded"];
+const QPE_STATUS_KEYS = ["Committed","Proposed","Backlogged","Complete","Eliminated","Concept"];
 const QPE_QUARTERS_HIST = [CYCLE.baseline, CYCLE.previous, CYCLE.current];
 
 function qpeParseStatus(raw){
   if(!raw) return null;
   var s = String(raw).trim();
-  if(/not\s*funded|unfunded/i.test(s)) return "Not Funded";
+  // "Not Funded" is not surfaced as its own QPE status — fall through so the
+  // initiative's earlier-quarter status (or another field) is used instead.
+  if(/not\s*funded|unfunded/i.test(s)) return null;
   if(/proposed/i.test(s)) return "Proposed";
   if(/committed/i.test(s) && /concept/i.test(s)) return "Concept";
   if(/committed/i.test(s)) return "Committed";
@@ -1160,6 +1162,7 @@ function QpeInitCard(props){
         <Chip bg={g.color+"33"} tx={goalTextColor(i.goal)} size={9.5}>G{g.num}</Chip>
         <span style={{fontFamily:"monospace",fontSize:9.5,color:"#aaa"}}>{i.id}</span>
         {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={9}>NEW</Chip>}
+        {props.revivedFlag && !i.isNew && <Chip bg="#F4ECF7" tx="#6C3483" size={9}>REVIVED</Chip>}
       </div>
       <div style={{fontSize:12.5,fontWeight:600,color:"#222",lineHeight:1.35}}>{i.name}</div>
       {i.shortDesc && <div style={{fontSize:10.5,color:"#888",lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{i.shortDesc}</div>}
@@ -1171,7 +1174,6 @@ function QpeInitCard(props){
 function QpeMainView(props){
   var initiatives = props.initiatives, onDrill = props.onDrill, onGoalDrill = props.onGoalDrill, goalFocus = props.goalFocus;
   var goalsRef = props.goalsRef || {};
-  var newOnes = initiatives.filter(function(i){return i.isNew;});
 
   var cycleStory = useMemo(function(){
     var lastCommittedIds = {}, lastBackloggedIds = {};
@@ -1193,6 +1195,18 @@ function QpeMainView(props){
     var revived = initiatives.filter(function(i){return lastBackloggedIds[i.id] && (i.status === "Proposed" || i.status === "Committed");});
     return {lastCommittedTotal: lastCommitted.length, completed:completed, backlogged:backlogged, ongoing:ongoing, newProposed:newProposed, revived:revived};
   },[initiatives]);
+
+  // Combine new and revived for the highlighted section. De-duplicate by ID
+  // in case an initiative qualifies for both buckets.
+  var newAndRevived = useMemo(function(){
+    var seen = {}, out = [];
+    cycleStory.newProposed.concat(cycleStory.revived).forEach(function(i){
+      if(seen[i.id]) return;
+      seen[i.id] = true;
+      out.push(i);
+    });
+    return out;
+  }, [cycleStory.newProposed, cycleStory.revived]);
 
   var goalLanes = {};
   Object.keys(GOALS).forEach(function(k){ goalLanes[k] = []; });
@@ -1278,15 +1292,24 @@ function QpeMainView(props){
         </div>
       </section>
 
-      {newOnes.length > 0 && (
+      {newAndRevived.length > 0 && (
         <section style={{marginBottom:24}}>
           <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:.8,color:"#9A6800",fontWeight:700,marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
-            <span>📥 New Proposed Initiatives This Cycle</span>
+            <span>📥 New Proposed and Revived Initiatives this Cycle</span>
             <span style={{flex:1,height:1,background:"#F4D03F"}}/>
-            <span style={{fontSize:10,color:"#aaa",letterSpacing:0,fontWeight:400,textTransform:"none"}}>({newOnes.length})</span>
+            <span style={{fontSize:10,color:"#aaa",letterSpacing:0,fontWeight:400,textTransform:"none"}}>
+              ({cycleStory.newProposed.length} new
+              {cycleStory.revived.length > 0 ? " + "+cycleStory.revived.length+" revived" : ""})
+            </span>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))",gap:10}}>
-            {newOnes.map(function(n){return <QpeInitCard key={n.id} init={n} onDrill={onDrill}/>;})}
+            {(function(){
+              var revivedIds = {};
+              cycleStory.revived.forEach(function(r){ revivedIds[r.id] = true; });
+              return newAndRevived.map(function(n){
+                return <QpeInitCard key={n.id} init={n} onDrill={onDrill} revivedFlag={Boolean(revivedIds[n.id])}/>;
+              });
+            })()}
           </div>
         </section>
       )}
@@ -1335,7 +1358,6 @@ function QpeMainView(props){
                           {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
                           {i.status === "Backlogged" && <Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx} size={8.5}>Backlogged</Chip>}
                           {i.status === "Complete" && <Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx} size={8.5}>Completed</Chip>}
-                          {i.status === "Not Funded" && <Chip bg={STATUS_CFG["Not Funded"].bg} tx={STATUS_CFG["Not Funded"].tx} size={8.5}>Not Funded</Chip>}
                         </div>
                       );
                     })}
@@ -1476,7 +1498,6 @@ function QpeView(props){
               <span><Chip bg={STATUS_CFG.Proposed.bg} tx={STATUS_CFG.Proposed.tx}>Proposed</Chip> candidate</span>
               <span><Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx}>Backlogged</Chip> deferred</span>
               <span><Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx}>Complete</Chip> finished</span>
-              <span><Chip bg={STATUS_CFG["Not Funded"].bg} tx={STATUS_CFG["Not Funded"].tx}>Not Funded</Chip> not funded this cycle</span>
               <span><Chip bg="#FEF5E7" tx="#9A6800">NEW</Chip> new project type this cycle</span>
               <span><Chip bg="#F4ECF7" tx="#6C3483">Concept</Chip> exploratory, excluded from capacity</span>
               <span><strong style={{color:"#9A6800"}}>★ #N</strong> CEO-ratified rank from {CYCLE.previous}</span>
@@ -1496,10 +1517,12 @@ function QpeView(props){
    Project Instructions. Order is load-bearing: the Capacity Calculations tab
    reads by column position (col N + idx*5). If the sheet column order changes,
    either restore it or update this array, NOT both silently.
-   Innovation retired Q3 2026 — count is 22 (12 NIH + 10 awardees). */
+   Innovation retired Q3 2026 — count is 22 (12 NIH + 10 awardees).
+   Note: Product appears before Policy in the actual sheet (differs from spec
+   document); array order matches the sheet so drill-down attribution is correct. */
 const CAP_TEAMS = [
   "Chief of Staff","COO","DCD","DMSR","DMSR (ODA)","Engagement","OFM","TPC",
-  "Policy","Product","UX","DTPD","BioBank",
+  "Product","Policy","UX","DTPD","BioBank",
   "DRC: Analytics","DRC: Curation","DRC: RDR","DRC: HealthPro","DRC: Public","DRC: Workbench",
   "PPSC: NORC","PPSC: IBM","PPSC: Support Center"
 ];
