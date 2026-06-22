@@ -279,6 +279,40 @@ function detectCycleDrift(planningCsv, expectedCycle){
 /* SHARED COMPONENTS */
 const {useState, useMemo, useEffect, useRef, useCallback} = React;
 
+/* URL mode helpers. Google Sites and some embed wrappers can preserve params
+   in either ?query or #hash, so read both. Supported examples:
+   ?view=roadmap-only, ?view=roadmap, ?dashboard=roadmap, ?tab=roadmap,
+   ?roadmapOnly=1, #view=roadmap-only. */
+function aouUrlParam(name){
+  try {
+    var values = [];
+    if(window.location.search) values.push(window.location.search.replace(/^\?/, ""));
+    if(window.location.hash){
+      var h = window.location.hash.replace(/^#/, "");
+      var q = h.indexOf("?") >= 0 ? h.slice(h.indexOf("?") + 1) : h;
+      if(q) values.push(q);
+    }
+    for(var i = 0; i < values.length; i++){
+      var params = new URLSearchParams(values[i]);
+      if(params.has(name)) return params.get(name);
+    }
+  } catch(e){}
+  return "";
+}
+function aouIsTruthy(v){ return /^(1|true|yes|y)$/i.test(String(v || "").trim()); }
+function aouInitialView(){
+  var view = String(aouUrlParam("view") || aouUrlParam("dashboard") || aouUrlParam("tab") || "").toLowerCase().replace(/_/g,"-");
+  if(aouIsTruthy(aouUrlParam("roadmapOnly")) || aouIsTruthy(aouUrlParam("roadmap-only"))) return "roadmap";
+  if(view === "roadmap-only" || view === "roadmaponly" || view === "roadmap") return "roadmap";
+  if(view === "capacity" || view === "capacity-planning") return "capacity";
+  if(view === "qpe" || view === "quarterly" || view === "quarterly-planning") return "qpe";
+  return "qpe";
+}
+const IS_ROADMAP_ONLY = (function(){
+  var view = String(aouUrlParam("view") || aouUrlParam("dashboard") || aouUrlParam("tab") || "").toLowerCase().replace(/_/g,"-");
+  return aouIsTruthy(aouUrlParam("roadmapOnly")) || aouIsTruthy(aouUrlParam("roadmap-only")) || view === "roadmap-only" || view === "roadmaponly";
+})();
+
 /* Admin mode is gated by URL param ?admin=1. Data quality flags (DQ warning
    icons in the IdentityBlock and inline messages) only render when admin
    mode is on. Senior leaders viewing the embedded dashboard see a clean view;
@@ -3811,7 +3845,7 @@ function RoadmapView(props){
    ════════════════════════════════════════════════════════════════════════════ */
 
 function App(){
-  var [activeView, setActiveView] = useState("qpe");
+  var [activeView, setActiveView] = useState(IS_ROADMAP_ONLY ? "roadmap" : aouInitialView());
   var [selectedInitiativeId, setSelectedInitiativeId] = useState(null);
   var [driftDismissed, setDriftDismissed] = useState(false);
   var data = useDataLoader();
@@ -3855,7 +3889,7 @@ function App(){
             NIH · <AoU/> Research Program · {CYCLE.current}
           </div>
           <div style={{fontSize:18,fontWeight:700,color:"#111",lineHeight:1.2,letterSpacing:-0.2}}>
-            Program Dashboards
+            {IS_ROADMAP_ONLY ? "Program Roadmap" : "Program Dashboards"}
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}}>
@@ -3878,17 +3912,19 @@ function App(){
 
       {IS_ADMIN && !driftDismissed && <CycleDriftBanner drift={cycleDrift} onDismiss={function(){setDriftDismissed(true);}}/>}
 
-      <div className="tab-bar">
-        <button className={"tab"+(activeView==="qpe"?" active":"")} onClick={function(){handleTabClick("qpe");}}>
-          Quarterly Planning
-        </button>
-        <button className={"tab"+(activeView==="roadmap"?" active":"")} onClick={function(){handleTabClick("roadmap");}}>
-          Roadmap
-        </button>
-        <button className={"tab"+(activeView==="capacity"?" active":"")} onClick={function(){handleTabClick("capacity");}}>
-          Capacity Planning
-        </button>
-      </div>
+      {!IS_ROADMAP_ONLY && (
+        <div className="tab-bar">
+          <button className={"tab"+(activeView==="qpe"?" active":"")} onClick={function(){handleTabClick("qpe");}}>
+            Quarterly Planning
+          </button>
+          <button className={"tab"+(activeView==="roadmap"?" active":"")} onClick={function(){handleTabClick("roadmap");}}>
+            Roadmap
+          </button>
+          <button className={"tab"+(activeView==="capacity"?" active":"")} onClick={function(){handleTabClick("capacity");}}>
+            Capacity Planning
+          </button>
+        </div>
+      )}
 
       {activeView === "qpe"      && <QpeView {...viewProps}/>}
       {activeView === "roadmap"  && <RoadmapView {...viewProps}/>}
