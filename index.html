@@ -726,7 +726,12 @@ function QpeDrillPanel(props){
   var possiblyTotal = cap ? cap.possiblyXS + cap.possiblyS + cap.possiblyM + cap.possiblyL + cap.possiblyXL : 0;
 
   return (
-    <div data-drilldown-panel="qpe" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+    <div ref={function(el){
+      // When the drill panel mounts, scroll it into view at the top of the
+      // viewport. Works in standalone tabs and inside the Google Site iframe.
+      if(el){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
+    }} data-drilldown-panel="qpe" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+      <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
       <IdentityBlock init={init} goalsRef={goalsRef} currentView="qpe" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
       <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
         <div style={{marginBottom:14,padding:"10px 12px",background:"#fafbfc",border:"1px solid #ececec",borderRadius:6}}>
@@ -783,7 +788,7 @@ function QpeDrillPanel(props){
             <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"4px 10px",fontSize:11.5,alignItems:"center"}}>
               {cap.committed > 0 && <>
                 <span style={{color:"#1E8449",fontWeight:600}}>✓</span>
-                <span style={{color:"#555"}}>Definitely committed</span>
+                <span style={{color:"#555"}}>Definitely</span>
                 <span style={{fontWeight:600,color:"#1E8449",textAlign:"right"}}>{cap.committed}</span>
               </>}
               {possiblyTotal > 0 && <>
@@ -880,14 +885,16 @@ function QpeGoalPanel(props){
   });
 
   return (
-    <div data-drilldown-panel="qpe-goal" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+    <div ref={function(el){
+      if(el){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
+    }} data-drilldown-panel="qpe-goal" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+      <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
       <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0,borderTop:"4px solid "+goalBorderColor(g)}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:goalBorderColor(g),fontWeight:700,marginBottom:4}}>Strategic Goal {g.num}</div>
             <div style={{fontSize:17,fontWeight:700,lineHeight:1.25,color:"#111"}}>{ref.name || g.name}</div>
           </div>
-          <button onClick={props.onClose} style={{border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1}}>×</button>
         </div>
         <div style={{fontSize:11,color:"#888",marginTop:6}}>{goalInits.length} initiative{goalInits.length !== 1 ? "s" : ""} in this quarter · {objectives.length} objective{objectives.length !== 1 ? "s" : ""}</div>
       </div>
@@ -927,7 +934,10 @@ function QpeListPanel(props){
   if(!props.list) return null;
   var list = props.list;
   return (
-    <div data-drilldown-panel="qpe-list" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+    <div ref={function(el){
+      if(el){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
+    }} data-drilldown-panel="qpe-list" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+      <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
       <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
           <div style={{flex:1,minWidth:0}}>
@@ -935,7 +945,6 @@ function QpeListPanel(props){
             <div style={{fontSize:17,fontWeight:700,lineHeight:1.25,color:"#111"}}>{list.items.length} {list.items.length === 1 ? "initiative" : "initiatives"}</div>
             {props.sublabel && <div style={{fontSize:11,color:"#888",marginTop:4}}>{props.sublabel}</div>}
           </div>
-          <button onClick={props.onClose} style={{border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1}}>×</button>
         </div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
@@ -2989,7 +2998,7 @@ function RoadmapView(props){
           {flagDebug.capRows > 0 && (
             <span title={"Capacity rows loaded: "+flagDebug.capRows+" · Roadmap initiatives matched to capacity rows: "+flagDebug.matched+" · Initiatives with at least one 'No Capacity' flag: "+flagDebug.flagged}
               style={{fontSize:10,padding:"3px 8px",borderRadius:10,background:flagDebug.flagged > 0 ? "#FDECEA" : "#f5f5f5",color:flagDebug.flagged > 0 ? "#922b21" : "#999",fontWeight:600,cursor:"help"}}>
-              🚧 {flagDebug.flagged} flagged · {flagDebug.matched}/{allInit.length} matched
+              🚧 {flagDebug.flagged} flagged
             </span>
           )}
         </div>
@@ -3468,22 +3477,6 @@ function App(){
           {data.state.status === "ready" && (
             <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#EAF7EF",color:"#1E8449",fontWeight:600}}>
               ● live · {data.state.loadedAt.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}
-            </span>
-          )}
-          {data.state.status === "ready" && (
-            <span title={
-              "PSI URL lookup status:\n" +
-              "• " + Object.keys(psiUrlMap).length + " URLs loaded from the PSI sheet\n" +
-              "• " + (data.state.psiUrlsCsv ? data.state.psiUrlsCsv.length.toLocaleString() : 0) + " chars of raw CSV received\n\n" +
-              (Object.keys(psiUrlMap).length === 0
-                ? "If this shows 0 URLs but the CSV has data, the parser may not recognize your column headers. Check the sheet's column titles match what the parser expects: ID column = 'ID', 'Initiative ID', or 'Init ID'. URL column = 'PSI URL', 'URL', 'Link', 'PSI Link', 'PSI URL Link', or 'Page URL'."
-                : "Initiatives with a matching ID in the sheet will use the sheet URL. Initiatives without a match fall back to a guessed slug URL.")
-            } style={{
-              fontSize:11,padding:"3px 10px",borderRadius:20,fontWeight:600,cursor:"help",
-              background: Object.keys(psiUrlMap).length > 0 ? "#EBF5FB" : "#FDECEA",
-              color: Object.keys(psiUrlMap).length > 0 ? "#1F618D" : "#922b21",
-            }}>
-              🔗 {Object.keys(psiUrlMap).length} PSI URLs
             </span>
           )}
           {data.state.status === "loading" && (
