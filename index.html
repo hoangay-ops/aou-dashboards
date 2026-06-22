@@ -2359,7 +2359,7 @@ function rmIsConcept(item){
   return Boolean(item && (item.isConcept || RM_CONCEPT_IDS[item.id] || item.planningStatus === "Concept"));
 }
 function RmConceptBadge(){
-  return <span title="Concept" style={{fontSize:8,fontWeight:800,width:16,height:16,borderRadius:4,display:"inline-flex",alignItems:"center",justifyContent:"center",background:STATUS_CFG.Concept.bg,color:STATUS_CFG.Concept.tx,border:"1px solid #D7BDE2",marginTop:1}}>C</span>;
+  return <span title="Concept" style={{fontSize:8,fontWeight:800,width:12,height:12,lineHeight:"12px",borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:STATUS_CFG.Concept.bg,color:STATUS_CFG.Concept.tx,border:"1px solid #D7BDE2",verticalAlign:"middle",flexShrink:0}}>C</span>;
 }
 function rmExtractParentId(p){
   if(!p) return "";
@@ -2515,7 +2515,7 @@ function rmNormalizeRows(rows){
     Object.keys(raw).forEach(function(k){ r[k.toLowerCase().trim()] = raw[k]; });
     if(String(r["showonroadmap"] || "").toUpperCase() === "FALSE") continue;
     var rawType = rmNf(r["type"]);
-    if(rawType === "Exclude from Roadmap" || rawType === "Program Staff" || rawType === "Participant Milestone") continue;
+    if(rawType === "Exclude from Roadmap" || rawType === "Program Staff") continue;
     var id = rmNf(r["id"]), cat = rmNf(r["cat"]).toLowerCase(), icon = rmNf(r["icon"]).toLowerCase(), name = rmNf(r["name"]);
     if(!name) continue;
     if(id && cat === "initiative"){
@@ -2571,14 +2571,15 @@ function rmNormalizeRows(rows){
         objOwner: rmNf(r["obj owner"], r["objective owner"], r["owner"]),
         poc: rmNf(r["poc or pdm"], r["poc / pdm"], r["poc"], r["pdm"]),
       });
-    } else if(!id && (icon === "star" || icon === "diamond")){
+    } else if(!id && rmNf(r["parent"])){
       var pid = rmExtractParentId(rmNf(r["parent"]));
       if(!pid) continue;
-      var mc2 = /tech readiness/i.test(cat) ? "tech readiness" : (cat === "tech" || cat === "comms" ? cat : "");
+      var mc2 = /tech readiness/i.test(cat) ? "tech readiness" : (cat === "tech" || cat === "comms" ? cat : (rawType === "Participant Milestone" ? "comms" : cat));
+      var eventIcon = (icon === "star" || icon === "diamond") ? icon : "";
       mils.push({
-        id:("MS-"+pid+"-"+icon+"-"+name+"-"+i).replace(/[^a-zA-Z0-9._-]+/g,"-").slice(0,80),
+        id:("MS-"+pid+"-"+(eventIcon || "event")+"-"+name+"-"+i).replace(/[^a-zA-Z0-9._-]+/g,"-").slice(0,80),
         name:name, start:rmNf(r["start"]) || null, end:rmNf(r["end"]) || null,
-        cat:mc2, icon:icon, parent:pid, goal:"", type:"",
+        cat:mc2, icon:eventIcon, parent:pid, goal:"", type:"",
       });
     }
   }
@@ -2622,7 +2623,14 @@ function RmDiamondIcon(props){
   </svg>;
 }
 function RmMsIcon(props){
+  if(!props.icon) return <span style={{width:14,height:14,display:"inline-flex",alignItems:"center",justifyContent:"center",color:props.col || RM_MILESTONE_COLOR,fontSize:13,fontWeight:800}}>↳</span>;
   return props.icon === "star" ? <RmStarIcon sz={props.sz} col={props.col} style={props.style}/> : <RmDiamondIcon sz={props.sz} col={props.col} style={props.style}/>;
+}
+function rmMilestoneDisplayType(m){
+  var cat = String((m && m.cat) || "").toLowerCase();
+  var icon = String((m && m.icon) || "").toLowerCase();
+  if(cat.indexOf("tech") !== -1 || icon === "star") return "Tech Ready";
+  return "Comms";
 }
 function RmGridLines(props){
   return <div style={{position:"absolute",inset:0,zIndex:1,pointerEvents:"none",display:"flex",overflow:"hidden"}}>
@@ -2887,7 +2895,7 @@ function RoadmapView(props){
   var cols = useMemo(function(){ return rmGenMonths(VS, VE); }, [VS, VE]);
   var quarters = useMemo(function(){ return rmGroupByQuarter(cols); }, [cols]);
   var allInit = useMemo(function(){ return roadmapItems.filter(function(i){return i.cat === "initiative";}); }, [roadmapItems]);
-  var msItems = useMemo(function(){ return items.filter(function(i){return i.cat === "comms" || i.cat === "tech";}); }, [items]);
+  var msItems = useMemo(function(){ return items.filter(function(i){return i.parent && i.cat !== "initiative";}); }, [items]);
 
   var tbdHiddenCount = useMemo(function(){
     if(!hideTBD) return 0;
@@ -2944,11 +2952,18 @@ function RoadmapView(props){
   var getMs = useCallback(function(id){
     return msItems.filter(function(m){
       if(m.parent !== id) return false;
+      if(m.icon !== "star" && m.icon !== "diamond") return false;
       if(milestoneView === "tech"  && m.icon !== "star") return false;
       if(milestoneView === "comms" && m.icon !== "diamond") return false;
       return true;
     });
   }, [msItems, milestoneView]);
+
+  var getDrillEvents = useCallback(function(id){
+    return msItems.filter(function(m){return m.parent === id;}).sort(function(a, b){
+      return (a.start || a.end || "9999") > (b.start || b.end || "9999") ? 1 : -1;
+    });
+  }, [msItems]);
 
   var groups = useMemo(function(){
     if(!grouped) return [["All", filtered]];
@@ -2987,7 +3002,7 @@ function RoadmapView(props){
   }, [allInit]);
 
   var expItem = expanded ? (roadmapItems.find(function(i){return i.id === expanded;}) || items.find(function(i){return i.id === expanded;})) : null;
-  var expMs = expanded ? getMs(expanded) : [];
+  var expMs = expanded ? getDrillEvents(expanded) : [];
 
   var depFocusData = useMemo(function(){
     if(!depFocus) return null;
@@ -3206,23 +3221,25 @@ function RoadmapView(props){
                     {gItems.map(function(item){
                       var role = depRole(item.id), rs = rmDepRelationStyle(role);
                       var noCapTeams = noCapacityTeams(item.id);
+                      var capacityFlagged = Boolean(showAud && noCapTeams);
+                      var rowBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : (capacityFlagged ? "#FFF7F6" : "transparent"));
                       return (
                         <div key={item.id} onClick={function(){selectInitiative(item.id);}}
-                          style={{height:RM_ROW_H,display:"flex",alignItems:"flex-start",gap:4,padding:"7px 6px 0 10px",borderBottom:"1px solid #f5f5f5",borderLeft: role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none"),overflow:"hidden",cursor:"pointer",background: role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : "transparent"),opacity: rs.opacity}}
-                          onMouseEnter={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="#f7fafd";}}
-                          onMouseLeave={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="transparent";}}>
-                          {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:14,height:14,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",marginTop:1}}>{RM_TYPE_SHORT[item.type]}</span>}
-                          {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7,fontWeight:600,padding:"1px 3px",borderRadius:3,background:"#f0f0f0",color:"#ccc",border:"1px solid #e8e8e8"}}>TBD</span>}
-                          {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8"}}>↔</span>}
-                          {rs.label && <span title="Dependency role" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border}}>{rs.label}</span>}
-                          {showAud && noCapTeams && (
+                          style={{height:RM_ROW_H,display:"flex",alignItems:"flex-start",gap:4,padding:"7px 6px 0 10px",borderBottom:"1px solid "+(capacityFlagged ? "#F1C6C0" : "#f5f5f5"),borderLeft: capacityFlagged ? "3px solid #C0392B" : (role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none")),overflow:"hidden",cursor:"pointer",background: rowBg,opacity: rs.opacity}}
+                          onMouseEnter={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background=capacityFlagged ? "#FFF0EE" : "#f7fafd";}}
+                          onMouseLeave={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background=capacityFlagged ? "#FFF7F6" : "transparent";}}>
+                          {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:14,height:14,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",marginTop:1,flexShrink:0}}>{RM_TYPE_SHORT[item.type]}</span>}
+                          {showAud && capacityFlagged && (
                             <span
                               onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                               title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
-                              style={{fontSize:8,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:3,marginTop:1,whiteSpace:"nowrap"}}>
-                              Capacity {noCapTeams.length}
+                              style={{fontSize:10,fontWeight:900,width:14,height:14,borderRadius:3,background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",marginTop:1,flexShrink:0,lineHeight:1}}>
+                              ⚠
                             </span>
                           )}
+                          {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7,fontWeight:600,padding:"1px 3px",borderRadius:3,background:"#f0f0f0",color:"#ccc",border:"1px solid #e8e8e8",flexShrink:0}}>TBD</span>}
+                          {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8",flexShrink:0}}>↔</span>}
+                          {rs.label && <span title="Dependency role" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border,flexShrink:0}}>{rs.label}</span>}
                           <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:1}}>
                             <span style={{fontSize:11.5,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={renderText(item.name)}>{renderText(item.name)}</span>
                             <span style={{fontSize:9,color:"#bbb",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
@@ -3255,6 +3272,8 @@ function RoadmapView(props){
                         var l2 = pct(item.start, false), r2 = pct(item.end, true);
                         var w = (l2 !== null && r2 !== null) ? r2 - l2 : 0;
                         var hasDates = rmHasFullDates(item), barCol = GOALS[item.goal] ? GOALS[item.goal].color : "#888", isDone = rmIsComplete(item);
+                        var capacityFlagged = Boolean(showAud && noCapacityTeams(item.id));
+                        var timelineBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : (capacityFlagged ? "#FFF7F6" : "transparent"));
                         var ms = getMs(item.id);
                         var spread = rmSpreadMs(ms, function(d, isEnd){return pct(d, isEnd, true);});
                         var qCol = (!hasDates && item.quarter) ? rmFindQuarterCol(item.quarter, cols) : null;
@@ -3262,7 +3281,7 @@ function RoadmapView(props){
                         var qR = qCol ? pct(qCol.end.toLocaleDateString("en-US"), true) : null;
                         var qW = (qL !== null && qR !== null) ? qR - qL : 0;
                         return (
-                          <div key={item.id} style={{height:RM_ROW_H,position:"relative",borderBottom:"1px solid #f5f5f5",background:role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : "transparent"),opacity:rs.opacity}}>
+                          <div key={item.id} style={{height:RM_ROW_H,position:"relative",borderBottom:"1px solid "+(capacityFlagged ? "#F1C6C0" : "#f5f5f5"),background:timelineBg,opacity:rs.opacity}}>
                             <RmGridLines n={cols.length} faint={true}/>
                             {hasDates && w > 0.2 && (
                               <div onClick={function(){selectInitiative(item.id);}} title={renderText(item.name)}
@@ -3408,7 +3427,7 @@ function RoadmapView(props){
                     <span style={{color:"#aaa"}}>Audience</span><span>{expItem.type || "—"}</span>
                     <span style={{color:"#aaa"}}>Start</span><span>{rmFmtDate(expItem.start) || "TBD"}</span>
                     <span style={{color:"#aaa"}}>End</span><span>{rmFmtDate(expItem.end) || "TBD"}</span>
-                    <span style={{color:"#aaa"}}>Awardees</span><span>{Array.isArray(expItem.awardees) && expItem.awardees.length > 0 ? expItem.awardees.join(", ") + (expItem.awardeeSource === "capacity" ? " (from Capacity performers)" : "") : "—"}</span>
+                    <span style={{color:"#aaa"}}>Awardees</span><span>{Array.isArray(expItem.awardees) && expItem.awardees.length > 0 ? expItem.awardees.join(", ") : "—"}</span>
                   </div>
                 </div>
                 {expMs.length > 0 && (
@@ -3419,7 +3438,7 @@ function RoadmapView(props){
                         <RmMsIcon icon={m.icon} sz={14} col={RM_MILESTONE_COLOR}/>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:11,fontWeight:500,color:"#333"}}>{renderText(m.name)}</div>
-                          <div style={{fontSize:10,color:"#999"}}>{rmFmtDate(m.start)} · {m.icon === "star" ? "Launch" : "Key"}{m.cat ? " · "+m.cat : ""}</div>
+                          <div style={{fontSize:10,color:"#999"}}>{rmFmtDate(m.start || m.end)} · {rmMilestoneDisplayType(m)}</div>
                         </div>
                       </div>
                     );})}
@@ -3457,8 +3476,8 @@ function RoadmapView(props){
             body:<>Inspector details show the shared identity block (Goal, Objective, POC), plus Roadmap-only Audience, Start, End, and Awardees.</>},
           {icon:"⚠", title:"Risks & TBD", color:"#C0392B", bg:"#FFF4F2",
             body:<><span style={{color:"#C0392B",fontWeight:800}}>⚠</span> Risks are highlighted in red. <strong>TBD</strong> items have no start, end, or quarter and can be hidden with the Hide TBD toggle.</>},
-          {icon:"🏷", title:"Capacity flag", color:"#922b21", bg:"#FDECEA",
-            body:<>A <strong style={{background:"#FDECEA",color:"#922b21",border:"1px solid #E6B0AA",padding:"1px 5px",borderRadius:4,fontSize:9.5}}>Capacity N</strong> badge next to a row means N team(s) flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the badge to jump directly to that initiative on the Capacity tab.</>},
+          {icon:"⚠", title:"Capacity flag", color:"#922b21", bg:"#FDECEA",
+            body:<>A lightly tinted row with a small <strong style={{color:"#922b21"}}>⚠</strong> icon means one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the warning icon to jump directly to that initiative on the Capacity tab.</>},
           {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
             body:<>The <strong>Print</strong> button opens a clean, landscape-sized snapshot of the currently filtered roadmap in a new tab — ready to print or save as PDF.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
