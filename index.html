@@ -279,6 +279,34 @@ function detectCycleDrift(planningCsv, expectedCycle){
 /* SHARED COMPONENTS */
 const {useState, useMemo, useEffect, useRef, useCallback} = React;
 
+/* Admin mode is gated by URL param ?admin=1. Data quality flags (DQ warning
+   icons in the IdentityBlock and inline messages) only render when admin
+   mode is on. Senior leaders viewing the embedded dashboard see a clean view;
+   the Program Lead opens the same URL with ?admin=1 to see DQ warnings. */
+const IS_ADMIN = (function(){
+  try {
+    var params = new URLSearchParams(window.location.search || "");
+    var v = (params.get("admin") || "").toLowerCase();
+    return v === "1" || v === "true" || v === "yes";
+  } catch(e){ return false; }
+})();
+
+/* Darker text colors for goal labels — the spec palette is meant for fills,
+   but the same hex used as readable text is too light (especially Goal 4 soft
+   gold and Goal 6 light gray). These darker variants are used wherever the
+   goal name is rendered as text. */
+const GOAL_TEXT_COLOR = {
+  "1": "#2E78A6",  // darker sky blue
+  "2": "#3F8E5F",  // darker sage green
+  "3": "#C25A45",  // darker coral
+  "4": "#9C7A1F",  // darker gold (was the unreadable #FFDD7F)
+  "5": "#C04A66",  // darker rose
+  "6": "#5F6368",  // darker gray (was the unreadable #D8D8D8)
+};
+function goalTextColor(goalKey){
+  return GOAL_TEXT_COLOR[goalKey] || "#444";
+}
+
 function AoU(){ return <em style={{fontStyle:"italic"}}>All of Us</em>; }
 
 function Chip(props){
@@ -293,7 +321,7 @@ function Chip(props){
 function GoalChipFull(props){
   var c = GOALS[props.g];
   if(!c) return null;
-  return <Chip bg={c.color+"22"} tx={goalBorderColor(c)} size={props.size}>
+  return <Chip bg={c.color+"33"} tx={goalTextColor(props.g)} size={props.size}>
     G{c.num} · {c.name}
   </Chip>;
 }
@@ -430,8 +458,9 @@ const navLinkStyle = {
 };
 
 /* IdentityBlock per Spec §1 — ID, Name, Goal, Objective, Status chip,
-   Project Type chip, Owner, View in PSI. Adds DQ flags inline per Spec §9
-   and a destination-excluded explainer per Spec §3 (Capacity view only). */
+   Project Type chip, Owner, View in PSI. DQ flags shown per Spec §9 ONLY when
+   admin mode is on (?admin=1 URL param). Senior leaders see a clean view.
+   Destination-excluded explainer per Spec §3 always shows (Capacity view). */
 function IdentityBlock(props){
   var init = props.init;
   var goalsRef = props.goalsRef || {};
@@ -441,7 +470,7 @@ function IdentityBlock(props){
   var gRef = goalsRef[init.goal] || {};
   var goalDetail = formatGoalDetail(init.goal, gRef.name, gRef.owner || init.goalOwner);
   var objDetail = formatObjectiveDetail(init.obj, init.objName, init.objOwner);
-  var dqIssues = detectDQIssues(init);
+  var dqIssues = IS_ADMIN ? detectDQIssues(init) : [];
   var psiMapped = init.id && props.psiUrlMap && props.psiUrlMap[init.id];
   var psiUrl = buildPsiUrl(init, props.psiUrlMap);
 
@@ -471,19 +500,19 @@ function IdentityBlock(props){
         </div>
         <div style={{color:"#333"}}>
           <strong>POC / PdM:</strong> {renderText(init.poc, "—")}
-          <DQFlag issue={dqIssueFor(dqIssues, "owner")}/>
+          {IS_ADMIN && <DQFlag issue={dqIssueFor(dqIssues, "owner")}/>}
         </div>
-        {dqIssueFor(dqIssues, "description") && (
+        {IS_ADMIN && dqIssueFor(dqIssues, "description") && (
           <div style={{color:"#7D6608",fontSize:10.5,fontStyle:"italic"}}>
             <DQFlag issue={dqIssueFor(dqIssues, "description")}/> Description pending
           </div>
         )}
-        {dqIssueFor(dqIssues, "rank") && (
+        {IS_ADMIN && dqIssueFor(dqIssues, "rank") && (
           <div style={{color:"#7D6608",fontSize:10.5}}>
             <DQFlag issue={dqIssueFor(dqIssues, "rank")}/> {dqIssueFor(dqIssues, "rank")}
           </div>
         )}
-        {dqIssueFor(dqIssues, "projectType") && (
+        {IS_ADMIN && dqIssueFor(dqIssues, "projectType") && (
           <div style={{color:"#7D6608",fontSize:10.5}}>
             <DQFlag issue={dqIssueFor(dqIssues, "projectType")}/> {dqIssueFor(dqIssues, "projectType")}
           </div>
@@ -518,12 +547,12 @@ function IdentityBlock(props){
           <a href={psiUrl} target="_blank" rel="noopener noreferrer" style={Object.assign({}, navLinkStyle, {textDecoration:"none",display:"inline-flex",alignItems:"center"})}>
             View in PSI ↗
           </a>
-        ) : (
+        ) : IS_ADMIN ? (
           <span title="No PSI link assigned for this initiative"
             style={Object.assign({}, navLinkStyle, {background:"#f5f5f5",color:"#aaa",borderColor:"#e0e0e0",cursor:"not-allowed",display:"inline-flex",alignItems:"center",gap:3})}>
             PSI link <DQFlag issue="PSI link not assigned"/>
           </span>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -1027,7 +1056,7 @@ function QpeGoalPanel(props){
       <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0,borderTop:"4px solid "+goalBorderColor(g)}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:goalBorderColor(g),fontWeight:700,marginBottom:4}}>Strategic Goal {g.num}</div>
+            <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:goalTextColor(gk),fontWeight:700,marginBottom:4}}>Strategic Goal {g.num}</div>
             <div style={{fontSize:17,fontWeight:700,lineHeight:1.25,color:"#111"}}>{ref.name || g.name}</div>
           </div>
         </div>
@@ -1128,7 +1157,7 @@ function QpeInitCard(props){
       onMouseEnter={function(e){e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.boxShadow="0 3px 12px rgba(0,0,0,.07)";}}
       onMouseLeave={function(e){e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}>
       <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flexWrap:"wrap"}}>
-        <Chip bg={g.color+"22"} tx={goalBorderColor(g)} size={9.5}>G{g.num}</Chip>
+        <Chip bg={g.color+"33"} tx={goalTextColor(i.goal)} size={9.5}>G{g.num}</Chip>
         <span style={{fontFamily:"monospace",fontSize:9.5,color:"#aaa"}}>{i.id}</span>
         {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={9}>NEW</Chip>}
       </div>
@@ -1276,7 +1305,7 @@ function QpeMainView(props){
               <div key={k} style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10}}>
                 <div onClick={function(){onGoalDrill(k);}} style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:8,gap:6,borderBottom:"2px solid "+goalBorderColor(g)+"55",paddingBottom:6,cursor:"pointer"}}>
                   <div style={{display:"flex",alignItems:"baseline",gap:8,minWidth:0,flex:1}}>
-                    <span style={{fontSize:13,fontWeight:700,color:goalBorderColor(g),whiteSpace:"nowrap"}}>
+                    <span style={{fontSize:13,fontWeight:700,color:goalTextColor(k),whiteSpace:"nowrap"}}>
                       Goal {renderText(g && g.num)}: {renderText(g && g.short)}
                     </span>
                     {goalOwner && (
@@ -1717,7 +1746,7 @@ function CapMiniRiskRow(props){
   var cs = capCiStyle(item.cap ? item.cap.ciNum : null);
   return (
     <div onClick={props.onClick} style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:8,alignItems:"center",padding:"7px 0",borderBottom:"1px solid #eef1f4",cursor:"pointer"}}>
-      <Chip bg={g ? g.color+"22" : "#eee"} tx={g ? goalBorderColor(g) : "#888"}>G{g ? g.num : "?"}</Chip>
+      <Chip bg={g ? g.color+"33" : "#eee"} tx={g ? goalTextColor(item.init.goal) : "#888"}>G{g ? g.num : "?"}</Chip>
       <div style={{minWidth:0}}>
         <div style={{fontSize:11.5,fontWeight:650,color:"#222",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{renderText(item.init.name)}</div>
         <div style={{fontSize:9.5,color:"#9aa3ad",fontFamily:"monospace",marginTop:1}}>{item.init.id} · {item.cap && item.cap.performers ? item.cap.performers + " teams" : "awaiting"}</div>
@@ -1890,7 +1919,7 @@ function CapTeamSummaryCard(props){
                   var g = GOALS[e.init.goal];
                   return (
                     <div key={e.init.id} onClick={function(){onSelect(e.init.id);}} style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:6,alignItems:"center",padding:"4px 7px",borderRadius:4,background:cfg.bg,borderLeft:"3px solid "+cfg.color+"66",cursor:"pointer",fontSize:11}}>
-                      <Chip bg={g ? g.color+"22" : "#eee"} tx={g ? goalBorderColor(g) : "#888"} size={9}>G{g ? g.num : "?"}</Chip>
+                      <Chip bg={g ? g.color+"33" : "#eee"} tx={g ? goalTextColor(e.init.goal) : "#888"} size={9}>G{g ? g.num : "?"}</Chip>
                       <span style={{color:"#222",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}} title={renderText(e.init.name)+" ("+e.init.id+")"}>{renderText(e.init.name)}</span>
                       <span style={{fontSize:9.5,color:"#666",fontWeight:600,whiteSpace:"nowrap"}}>{loe}</span>
                     </div>
@@ -2261,7 +2290,7 @@ function CapacityView(props){
 
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-      {!bannerDismissed && <CapMismatchBanner mismatches={mismatches} onDismiss={function(){setBannerDismissed(true);}}/>}
+      {IS_ADMIN && !bannerDismissed && <CapMismatchBanner mismatches={mismatches} onDismiss={function(){setBannerDismissed(true);}}/>}
 
       <div style={{padding:"12px 24px 8px",background:"#fff",borderBottom:"1px solid #ececec",flexShrink:0}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(118px,1fr))",gap:10}}>
@@ -2363,7 +2392,7 @@ function CapacityView(props){
                       onMouseEnter={function(e){e.currentTarget.style.background = "#edf3fb";}}
                       onMouseLeave={function(e){e.currentTarget.style.background = rowIdx % 2 === 0 ? "#fff" : "#f9fafb";}}>
                       <td style={{padding:0,background:g ? goalBorderColor(g) : "#ccc",borderBottom:"1px solid #e4e8ed"}}/>
-                      <td style={{padding:"5px 8px",borderBottom:"1px solid #e4e8ed",borderRight:"1px solid #eff1f4"}}><Chip bg={g ? g.color+"22" : "#eee"} tx={g ? goalBorderColor(g) : "#888"}>G{g ? g.num : "?"}</Chip></td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid #e4e8ed",borderRight:"1px solid #eff1f4"}}><Chip bg={g ? g.color+"33" : "#eee"} tx={g ? goalTextColor(x.init.goal) : "#888"}>G{g ? g.num : "?"}</Chip></td>
                       <td title={renderText(x.init.name)} style={{padding:"5px 8px",borderBottom:"1px solid #e4e8ed",borderRight:"1px solid #eff1f4",maxWidth:0,overflow:"hidden"}}>
                         <div style={{display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:5,overflow:"hidden"}}>
@@ -3017,6 +3046,17 @@ function RoadmapView(props){
     return flagging.length > 0 ? flagging : null;
   }
 
+  /* Total count of flagged initiatives across the whole roadmap (ignores
+     active filters) so the "View flagged" button always shows a stable count. */
+  var flaggedCount = useMemo(function(){
+    var n = 0;
+    (items || []).forEach(function(it){
+      if(it.cat !== "initiative") return;
+      if(noCapacityTeams(it.id)) n++;
+    });
+    return n;
+  }, [items, capData]);
+
   function awardeesFromCapacity(initId){
     var cap = capData[initId] || capData[String(initId || "").trim()];
     if(!cap || !cap.teams || !cap.teams.length) return null;
@@ -3146,6 +3186,7 @@ function RoadmapView(props){
   }, [filtered, grouped, groupBy]);
 
   function gc(k){ return GOALS[k] ? goalBorderColor(GOALS[k]) : RM_TYPE_COLOR[k] || "#888"; }
+  function gcText(k){ return GOALS[k] ? goalTextColor(k) : RM_TYPE_COLOR[k] || "#666"; }
   function gl(k){ return GOALS[k] ? "Goal "+GOALS[k].num+": "+GOALS[k].short : k; }
 
   function reset(){
@@ -3232,6 +3273,22 @@ function RoadmapView(props){
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
+          {flaggedCount > 0 && (
+            <button onClick={function(){setFlaggedOnly(!flaggedOnly);}}
+              title={flaggedOnly ? "Show all initiatives" : "Show only initiatives with one or more teams flagging 'No Capacity Remaining'"}
+              style={{
+                fontSize:11.5,padding:"4px 11px",
+                border:"1px solid "+(flaggedOnly ? "#C0392B" : "#E6B0AA"),
+                borderRadius:6,
+                background:flaggedOnly ? "#C0392B" : "#FDECEA",
+                color:flaggedOnly ? "#fff" : "#922b21",
+                cursor:"pointer",fontWeight:600,
+                display:"inline-flex",alignItems:"center",gap:5,
+              }}>
+              <span style={{fontSize:12,lineHeight:1}}>⚠</span>
+              {flaggedOnly ? "Showing flagged ("+flaggedCount+") · click to clear" : "View flagged ("+flaggedCount+")"}
+            </button>
+          )}
           <button onClick={rmPrintRoadmap} title="Print the currently filtered roadmap" style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>Print</button>
           <button onClick={reset} style={{fontSize:11.5,padding:"4px 11px",border:"1px solid #e0e0e0",borderRadius:6,background:"#fff",cursor:"pointer"}}>Reset</button>
           <span style={{fontSize:11,color:"#aaa"}}>Showing</span>
@@ -3380,7 +3437,7 @@ function RoadmapView(props){
                   <div key={gKey}>
                     {grouped && (
                       <div style={{height:RM_ROW_H,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",background:"#f5f5f5",borderBottom:"1px solid #ebebeb",borderLeft:"3px solid "+gc(gKey)}}>
-                        <span style={{fontSize:11.5,fontWeight:600,color:gc(gKey)}}>{gl(gKey)}</span>
+                        <span style={{fontSize:11.5,fontWeight:600,color:gcText(gKey)}}>{gl(gKey)}</span>
                       </div>
                     )}
                     {gItems.map(function(item){
@@ -3397,8 +3454,20 @@ function RoadmapView(props){
                             <span
                               onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                               title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
-                              style={{position:"absolute",right:7,top:11,fontSize:13,fontWeight:900,color:"#C0392B",cursor:"pointer",lineHeight:1,background:"transparent",border:"none",padding:0,zIndex:2}}>
-                              ⚠
+                              style={{
+                                position:"absolute",right:6,top:11,
+                                fontSize:11,fontWeight:600,
+                                color:"#fff",
+                                background:"#C0392B",
+                                cursor:"pointer",lineHeight:1,
+                                border:"none",
+                                padding:"2px 5px",
+                                borderRadius:3,
+                                zIndex:2,
+                                opacity:.85,
+                                letterSpacing:.5,
+                              }}>
+                              !
                             </span>
                           )}
                           {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:14,height:14,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",marginTop:1,flexShrink:0}}>{RM_TYPE_SHORT[item.type]}</span>}
@@ -3633,8 +3702,8 @@ function RoadmapView(props){
             body:<><span style={{color:"#F5A800",fontWeight:800}}>★</span> Launch milestones and <span style={{color:"#F5A800",fontWeight:800}}>◇</span> key milestones sit on the parent initiative timeline. Hover for date and category; use the milestone filter to show one type.</>},
           {icon:"↔", title:"Dependency mode", color:"#7D6608", bg:"#FFF9EC",
             body:<>Turn on <strong>↔ Dependency mode</strong>, then click an initiative. The focus row turns amber, upstream dependencies turn yellow, impacted downstream rows turn blue, and unrelated rows fade.</>},
-          {icon:"⚠", title:"Capacity flag", color:"#C0392B", bg:"#FDECEA",
-            body:<>A lightly tinted row with a red <strong>⚠</strong> icon means one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the warning icon to jump directly to that initiative on the Capacity tab.</>},
+          {icon:"!", title:"Capacity flag", color:"#C0392B", bg:"#FDECEA",
+            body:<>Rows with a small red <strong style={{background:"#C0392B",color:"#fff",padding:"1px 5px",borderRadius:3,fontSize:10,fontWeight:600}}>!</strong> badge mean one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the badge to jump directly to that initiative on the Capacity tab, or use the <strong>View flagged</strong> button at the top to filter to all flagged items at once.</>},
           {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
             body:<>The <strong>Print</strong> button opens a clean, landscape-sized snapshot of the currently filtered roadmap in a new tab — ready to print or save as PDF.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
@@ -3728,7 +3797,7 @@ function App(){
         </div>
       </div>
 
-      {!driftDismissed && <CycleDriftBanner drift={cycleDrift} onDismiss={function(){setDriftDismissed(true);}}/>}
+      {IS_ADMIN && !driftDismissed && <CycleDriftBanner drift={cycleDrift} onDismiss={function(){setDriftDismissed(true);}}/>}
 
       <div className="tab-bar">
         <button className={"tab"+(activeView==="qpe"?" active":"")} onClick={function(){handleTabClick("qpe");}}>
