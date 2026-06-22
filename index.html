@@ -325,18 +325,6 @@ const IS_ADMIN = (function(){
   } catch(e){ return false; }
 })();
 
-/* Roadmap-only mode is gated by URL param ?view=roadmap-only. Hides the tab
-   bar (only Roadmap renders), renames the header to "Program Roadmap", and
-   grays out the cross-view nav buttons in drill-downs so the Roadmap can be
-   shared standalone while QP and Capacity dashboards are still being polished. */
-const IS_ROADMAP_ONLY = (function(){
-  try {
-    var params = new URLSearchParams(window.location.search || "");
-    var v = (params.get("view") || "").toLowerCase();
-    return v === "roadmap-only" || v === "roadmap_only" || v === "roadmaponly";
-  } catch(e){ return false; }
-})();
-
 /* Darker text colors for goal labels — the spec palette is meant for fills,
    but the same hex used as readable text is too light (especially Goal 4 soft
    gold and Goal 6 light gray). These darker variants are used wherever the
