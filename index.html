@@ -1342,6 +1342,7 @@ function QpeMainView(props){
                 {lane.length === 0 ? <div style={{fontSize:11,color:"#bbb",fontStyle:"italic",padding:"6px 0"}}>None in this quarter.</div> : (
                   <div style={{display:"flex",flexDirection:"column",gap:3}}>
                     {lane.map(function(i){
+                      var isConceptItem = i.status === "Concept" || /concept/i.test(i.projectType || "");
                       return (
                         <div key={i.id} onClick={function(){onDrill(i.id);}} style={{padding:"6px 8px",margin:"0 -8px",borderRadius:5,cursor:"pointer",display:"flex",alignItems:"center",gap:6,minWidth:0,transition:"background .12s"}}
                           onMouseEnter={function(e){e.currentTarget.style.background="#f7fafd";}}
@@ -1356,7 +1357,7 @@ function QpeMainView(props){
                             </span>
                           </span>
                           {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
-                          {i.status === "Concept" && <Chip bg={STATUS_CFG.Concept.bg} tx={STATUS_CFG.Concept.tx} size={8.5}>Concept</Chip>}
+                          {isConceptItem && <Chip bg={STATUS_CFG.Concept.bg} tx={STATUS_CFG.Concept.tx} size={8.5}>Concept</Chip>}
                           {i.status === "Backlogged" && <Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx} size={8.5}>Backlogged</Chip>}
                           {i.status === "Complete" && <Chip bg={STATUS_CFG.Complete.bg} tx={STATUS_CFG.Complete.tx} size={8.5}>Completed</Chip>}
                         </div>
