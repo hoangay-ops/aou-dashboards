@@ -718,7 +718,7 @@ function ViewGuide(props){
             return (
               <div key={i} style={{padding:"13px 14px",border:"1px solid #ebebeb",borderRadius:9,background:card.bg || "#fff",display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:18,lineHeight:1}}>{card.icon}</span>
+                  {card.icon && <span style={{fontSize:18,lineHeight:1}}>{card.icon}</span>}
                   <div style={{fontSize:10.5,fontWeight:800,color:card.color || "#185FA5",textTransform:"uppercase",letterSpacing:.45}}>{card.title}</div>
                 </div>
                 <div style={{fontSize:11.5,color:"#5f6b75",lineHeight:1.45}}>{card.body}</div>
@@ -2671,7 +2671,7 @@ function rmIsConcept(item){
   return Boolean(item && (item.isConcept || item.planningStatus === "Concept" || /concept/i.test(item.projectType || "")));
 }
 function RmConceptBadge(){
-  return <span title="Concept" style={{fontSize:8,fontWeight:800,width:12,height:12,lineHeight:"12px",borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:STATUS_CFG.Concept.bg,color:STATUS_CFG.Concept.tx,border:"1px solid #D7BDE2",verticalAlign:"middle",flexShrink:0}}>C</span>;
+  return <span title="Concept" style={{fontSize:8,fontWeight:800,width:15,height:15,lineHeight:"15px",borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",background:STATUS_CFG.Concept.bg,color:STATUS_CFG.Concept.tx,border:"1px solid #D7BDE2",verticalAlign:"middle",flexShrink:0}}>C</span>;
 }
 function rmExtractParentId(p){
   if(!p) return "";
@@ -3548,7 +3548,7 @@ function RoadmapView(props){
                       var rowBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : (capacityFlagged ? "#FFF7F6" : "transparent"));
                       return (
                         <div key={item.id} onClick={function(){selectInitiative(item.id);}}
-                          style={{height:RM_ROW_H,display:"flex",alignItems:"flex-start",gap:4,padding:"8px 24px 0 10px",borderBottom:"1px solid "+(capacityFlagged ? "#F1C6C0" : "#f5f5f5"),borderLeft: capacityFlagged ? "3px solid #C0392B" : (role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none")),overflow:"hidden",cursor:"pointer",background: rowBg,opacity: rs.opacity,position:"relative"}}
+                          style={{height:RM_ROW_H,display:"flex",alignItems:"flex-start",gap:4,padding:"5px 24px 0 12px",borderBottom:"1px solid "+(capacityFlagged ? "#F1C6C0" : "#f5f5f5"),borderLeft: capacityFlagged ? "3px solid #C0392B" : (role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none")),overflow:"hidden",cursor:"pointer",background: rowBg,opacity: rs.opacity,position:"relative"}}
                           onMouseEnter={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background=capacityFlagged ? "#FFF0EE" : "#f7fafd";}}
                           onMouseLeave={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background=capacityFlagged ? "#FFF7F6" : "transparent";}}>
                           {showAud && capacityFlagged && (
@@ -3556,30 +3556,28 @@ function RoadmapView(props){
                               onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                               title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
                               style={{
-                                position:"absolute",right:6,top:11,
-                                fontSize:11,fontWeight:600,
-                                color:"#fff",
-                                background:"#C0392B",
+                                position:"absolute",right:7,top:12,
+                                fontSize:13,fontWeight:800,
+                                color:"#F5A800",
+                                background:"transparent",
                                 cursor:"pointer",lineHeight:1,
                                 border:"none",
-                                padding:"2px 5px",
-                                borderRadius:3,
+                                padding:0,
+                                borderRadius:0,
                                 zIndex:2,
-                                opacity:.85,
-                                letterSpacing:.5,
                               }}>
-                              !
+                              ⚠
                             </span>
                           )}
-                          {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:14,height:14,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",marginTop:1,flexShrink:0}}>{RM_TYPE_SHORT[item.type]}</span>}
-                          {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7,fontWeight:600,padding:"1px 3px",borderRadius:3,background:"#f0f0f0",color:"#ccc",border:"1px solid #e8e8e8",flexShrink:0}}>TBD</span>}
-                          {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8",flexShrink:0}}>↔</span>}
-                          {rs.label && <span title="Dependency role" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border,flexShrink:0}}>{rs.label}</span>}
-                          <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:1}}>
-                            <span style={{fontSize:12,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={renderText(item.name)}>{renderText(item.name)}</span>
-                            <span style={{fontSize:9.5,color:"#bbb",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:5,lineHeight:"15px",minHeight:15}}>
-                              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{item.id}</span>
+                          <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:2,paddingRight:capacityFlagged ? 18 : 0}}>
+                            <span style={{fontSize:12.2,fontWeight:650,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:"16px"}} title={renderText(item.name)}>{renderText(item.name)}</span>
+                            <span style={{fontSize:9.5,color:"#a3adb7",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:5,lineHeight:"16px",minHeight:16}}>
+                              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,maxWidth:70}}>{item.id}</span>
+                              {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:15,height:15,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{RM_TYPE_SHORT[item.type]}</span>}
                               {showAud && rmIsConcept(item) && <RmConceptBadge/>}
+                              {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7,fontWeight:600,padding:"1px 3px",borderRadius:3,background:"#f0f0f0",color:"#aaa",border:"1px solid #e8e8e8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>TBD</span>}
+                              {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>↔</span>}
+                              {rs.label && <span title="Dependency role" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border,flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{rs.label}</span>}
                               {showAud && rmInitStatusDisplay(item) && <span style={{fontSize:8,fontWeight:700,padding:"0px 5px",borderRadius:4,background:rmInitStatusDisplay(item).bg,color:rmInitStatusDisplay(item).tx,border:"1px solid "+rmInitStatusDisplay(item).border,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",lineHeight:"12px",flexShrink:0}}>{rmInitStatusDisplay(item).icon} {rmInitStatusDisplay(item).label}</span>}
                             </span>
                           </div>
@@ -3799,12 +3797,12 @@ function RoadmapView(props){
         cards={[
           {icon:"📅", title:"Timeline", color:"#2471A3", bg:"#F4FAFF",
             body:<>Quarters and months run left to right. Colored bars show initiative duration. A red line marks today, and the current month is highlighted blue.</>},
-          {icon:"★ ◇", title:"Milestones", color:"#F5A800", bg:"#FFFAF0",
+          {icon:null, title:"Milestones", color:"#F5A800", bg:"#FFFAF0",
             body:<><span style={{color:"#F5A800",fontWeight:800}}>★</span> Launch milestones and <span style={{color:"#F5A800",fontWeight:800}}>◇</span> key milestones sit on the parent initiative timeline. Hover for date and category; use the milestone filter to show one type.</>},
           {icon:"↔", title:"Dependency mode", color:"#7D6608", bg:"#FFF9EC",
             body:<>Turn on <strong>↔ Dependency mode</strong>, then click an initiative. The focus row turns amber, upstream dependencies turn yellow, impacted downstream rows turn blue, and unrelated rows fade.</>},
-          {icon:"!", title:"Capacity flag", color:"#C0392B", bg:"#FDECEA",
-            body:<>Rows with a small red <strong style={{background:"#C0392B",color:"#fff",padding:"1px 5px",borderRadius:3,fontSize:10,fontWeight:600}}>!</strong> badge mean one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the badge to jump directly to that initiative on the Capacity tab, or use the <strong>View flagged</strong> button at the top to filter to all flagged items at once.</>},
+          {icon:"⚠", title:"Capacity flag", color:"#C0392B", bg:"#FDECEA",
+            body:<>Rows with a subtle tint and a yellow <strong style={{color:"#F5A800",fontSize:12,fontWeight:800}}>⚠</strong> mean one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the warning icon to jump directly to that initiative on the Capacity tab, or use the <strong>View flagged</strong> button at the top to filter to all flagged items at once.</>},
           {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
             body:<>The <strong>Print</strong> button opens a clean, landscape-sized snapshot of the currently filtered roadmap in a new tab — ready to print or save as PDF.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
@@ -3815,9 +3813,9 @@ function RoadmapView(props){
           content: (
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:"7px 10px",fontSize:11.2,color:"#606b75"}}>
               {Object.keys(GOALS).map(function(k){var g = GOALS[k];
-                return <span key={k} style={{display:"inline-flex",alignItems:"center",gap:6,minWidth:0}}>
-                  <span style={{width:14,height:14,borderRadius:4,background:goalBorderColor(g),display:"inline-block",border:"1px solid rgba(0,0,0,.08)"}}/>
-                  <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>G{g.num} {g.short}</span>
+                return <span key={k} style={{display:"inline-flex",alignItems:"center",gap:7,minWidth:0}}>
+                  <span style={{width:18,height:18,borderRadius:4,background:goalBorderColor(g),border:"1px solid rgba(0,0,0,.08)",display:"inline-flex",alignItems:"center",justifyContent:"center",color:"#1a1a1a",fontSize:10,fontWeight:800,flexShrink:0}}>{g.num}</span>
+                  <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{g.name}</span>
                 </span>;
               })}
             </div>
