@@ -561,33 +561,23 @@ function IdentityBlock(props){
            " because it has been Eliminated."}
         </div>
       )}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {props.currentView !== "qpe" && (
-          IS_ROADMAP_ONLY ? (
-            <span title="Quarterly Planning dashboard is not yet available" style={Object.assign({}, navLinkStyle, {background:"#f5f5f5",color:"#bbb",borderColor:"#e8e8e8",cursor:"not-allowed",display:"inline-flex",alignItems:"center"})}>
-              View in QPE →
-            </span>
-          ) : (
-            <button onClick={function(){props.onNavigateView("qpe", init.id);}} style={navLinkStyle}>
-              View in QPE →
-            </button>
-          )
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        {/* Cross-view nav: in standalone (roadmap-only) mode, suppress disabled
+            buttons entirely and surface a single informational note instead. */}
+        {!IS_ROADMAP_ONLY && props.currentView !== "qpe" && (
+          <button onClick={function(){props.onNavigateView("qpe", init.id);}} style={navLinkStyle}>
+            View in QPE →
+          </button>
         )}
-        {props.currentView !== "roadmap" && (
+        {!IS_ROADMAP_ONLY && props.currentView !== "roadmap" && (
           <button onClick={function(){props.onNavigateView("roadmap", init.id);}} style={navLinkStyle}>
             View in Roadmap →
           </button>
         )}
-        {props.currentView !== "capacity" && (
-          IS_ROADMAP_ONLY ? (
-            <span title="Capacity Planning dashboard is not yet available" style={Object.assign({}, navLinkStyle, {background:"#f5f5f5",color:"#bbb",borderColor:"#e8e8e8",cursor:"not-allowed",display:"inline-flex",alignItems:"center"})}>
-              View in Capacity →
-            </span>
-          ) : (
-            <button onClick={function(){props.onNavigateView("capacity", init.id);}} style={navLinkStyle}>
-              View in Capacity →
-            </button>
-          )
+        {!IS_ROADMAP_ONLY && props.currentView !== "capacity" && (
+          <button onClick={function(){props.onNavigateView("capacity", init.id);}} style={navLinkStyle}>
+            View in Capacity →
+          </button>
         )}
         {psiMapped ? (
           <a href={psiUrl} target="_blank" rel="noopener noreferrer" style={Object.assign({}, navLinkStyle, {textDecoration:"none",display:"inline-flex",alignItems:"center"})}>
@@ -599,6 +589,11 @@ function IdentityBlock(props){
             PSI link <DQFlag issue="PSI link not assigned"/>
           </span>
         ) : null}
+        {IS_ROADMAP_ONLY && (
+          <span style={{fontSize:10,color:"#aaa",fontStyle:"italic",padding:"5px 0",marginLeft:4}}>
+            Quarterly Planning & Capacity dashboards coming soon
+          </span>
+        )}
       </div>
     </div>
   );
@@ -2608,12 +2603,6 @@ const RM_AWARDEE_CFG = {
   Biobank: {label:"Biobank", color:"#B3541E",bg:"#FDF2E9",tx:"#B3541E"},
 };
 const RM_AWARDEE_KEYS = ["DRC","PPSC","Biobank"];
-const RM_INIT_STATUS_CFG = {
-  Complete:   {label:"Complete", icon:"✓", bg:"#D5F5E3", tx:"#1E8449", border:"#ABEBC6"},
-  Backlogged: {label:"Backlogged", icon:"↓", bg:"#EAECEE", tx:"#566573", border:"#D5DBDB"},
-  Proposed:   {label:"New", icon:"+", bg:"#FEF5E7", tx:"#9A6800", border:"#F4D03F"},
-  "Not Funded": {label:"Not Funded", icon:"$", bg:"#FDECEA", tx:"#943126", border:"#E6B0AA"},
-};
 
 function rmParseDate(s){
   if(!s) return null;
@@ -3548,43 +3537,29 @@ function RoadmapView(props){
                       var rowBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : "transparent");
                       return (
                         <div key={item.id} onClick={function(){selectInitiative(item.id);}}
-                          style={{height:RM_ROW_H,display:"grid",gridTemplateColumns:"68px minmax(0,1fr)",alignItems:"stretch",padding:"0 24px 0 0",borderBottom:"1px solid #f5f5f5",borderLeft: role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none"),overflow:"hidden",cursor:"pointer",background: rowBg,opacity: rs.opacity,position:"relative"}}
-                          onMouseEnter={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="#f7fafd";}}
+                          style={{height:RM_ROW_H,display:"flex",alignItems:"center",gap:8,padding:"0 12px 0 10px",borderBottom:"1px solid #f5f5f5",borderLeft: role !== "normal" && role !== "muted" ? "3px solid "+rs.border : (grouped ? "3px solid "+gc(gKey)+"22" : "none"),overflow:"hidden",cursor:"pointer",background: rowBg,opacity: rs.opacity,position:"relative"}}
+                          onMouseEnter={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="#eef4fa";}}
                           onMouseLeave={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="transparent";}}>
-                          {showAud && capacityFlagged && (
-                            <span
-                              onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
-                              title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
-                              style={{
-                                position:"absolute",right:7,top:14,
-                                fontSize:10,fontWeight:800,
-                                color:"#fff",
-                                background:"#C0392B",
-                                cursor:"pointer",lineHeight:1,
-                                border:"none",
-                                padding:"2px 5px",
-                                borderRadius:3,
-                                zIndex:2,
-                              }}>
-                              !
-                            </span>
-                          )}
-                          <div style={{height:"100%",display:"flex",flexDirection:"column",justifyContent:"center",gap:2,padding:"0 6px 0 9px",borderRight:"1px solid #eef0f2",background:"rgba(250,251,252,.72)",minWidth:0}}>
-                            <span style={{fontSize:9.5,color:"#8f9aa5",fontFamily:"monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:"14px"}}>{item.id}</span>
-                            <span style={{display:"flex",alignItems:"center",gap:4,minHeight:16,lineHeight:"16px"}}>
-                              {showAud && rmIsConcept(item) && <RmConceptBadge/>}
-                              {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7,fontWeight:600,padding:"1px 3px",borderRadius:3,background:"#f0f0f0",color:"#aaa",border:"1px solid #e8e8e8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>TBD</span>}
-                            </span>
+                          {/* Leading indicators: audience badge, capacity flag, dependency role */}
+                          <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                            {showAud && RM_TYPE_SHORT[item.type] && <span title={item.type} style={{fontSize:8,fontWeight:700,width:16,height:16,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{RM_TYPE_SHORT[item.type]}</span>}
+                            {showAud && capacityFlagged && (
+                              <span
+                                onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
+                                title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
+                                style={{fontSize:10,fontWeight:800,color:"#fff",background:"#C0392B",cursor:"pointer",lineHeight:1,border:"none",padding:"3px 6px",borderRadius:3,flexShrink:0}}>!</span>
+                            )}
                           </div>
-                          <div style={{minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:3,padding:"0 6px 0 9px",paddingRight:capacityFlagged ? 18 : 6}}>
-                            <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-                              {showAud && RM_TYPE_SHORT[item.type] && <span style={{fontSize:8,fontWeight:700,width:15,height:15,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{RM_TYPE_SHORT[item.type]}</span>}
-                              <span style={{fontSize:12.2,fontWeight:650,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:"16px",minWidth:0}} title={renderText(item.name)}>{renderText(item.name)}</span>
-                            </div>
-                            <div style={{display:"flex",alignItems:"center",gap:4,minHeight:13,lineHeight:"13px",overflow:"hidden"}}>
-                              {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>↔</span>}
-                              {rs.label && <span title="Dependency role" style={{fontSize:7,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border,flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{rs.label}</span>}
-                              {showAud && rmInitStatusDisplay(item) && <span style={{fontSize:8,fontWeight:700,padding:"0px 5px",borderRadius:4,background:rmInitStatusDisplay(item).bg,color:rmInitStatusDisplay(item).tx,border:"1px solid "+rmInitStatusDisplay(item).border,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",lineHeight:"12px",flexShrink:0}}>{rmInitStatusDisplay(item).icon} {rmInitStatusDisplay(item).label}</span>}
+                          {/* Main label: name on top, ID + status badges below */}
+                          <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
+                            <span style={{fontSize:12.5,fontWeight:600,color:"#222",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:"16px"}} title={renderText(item.name)}>{renderText(item.name)}</span>
+                            <div style={{display:"flex",alignItems:"center",gap:5,minHeight:13,lineHeight:"13px",overflow:"hidden"}}>
+                              <span style={{fontSize:9.5,color:"#9aa3ad",fontFamily:"monospace",flexShrink:0}}>{item.id}</span>
+                              {showAud && rmIsConcept(item) && <RmConceptBadge/>}
+                              {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7.5,fontWeight:600,padding:"1px 4px",borderRadius:3,background:"#f0f0f0",color:"#999",border:"1px solid #e8e8e8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>TBD</span>}
+                              {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7.5,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>↔</span>}
+                              {rs.label && <span title="Dependency role" style={{fontSize:7.5,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border,flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{rs.label}</span>}
+                              {showAud && rmInitStatusDisplay(item) && <span style={{fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,background:rmInitStatusDisplay(item).bg,color:rmInitStatusDisplay(item).tx,border:"1px solid "+rmInitStatusDisplay(item).border,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",lineHeight:"12px",flexShrink:0}}>{rmInitStatusDisplay(item).icon} {rmInitStatusDisplay(item).label}</span>}
                             </div>
                           </div>
                         </div>
@@ -3660,9 +3635,10 @@ function RoadmapView(props){
                 })}
                 {todayP !== null && todayP >= 0 && todayP <= 100 && (
                   <>
-                    <div style={{position:"absolute",top:0,bottom:0,left:"calc("+todayP+"% - 12px)",width:24,background:"rgba(192,57,43,.03)",zIndex:3,pointerEvents:"none"}}/>
-                    <div style={{position:"absolute",top:0,bottom:0,left:todayP+"%",width:1.5,background:"#C0392B",opacity:.6,zIndex:20,pointerEvents:"none"}}>
-                      <div style={{position:"absolute",top:2,left:2,fontSize:7.5,fontWeight:700,background:"#C0392B",color:"#fff",padding:"1px 4px",borderRadius:2,whiteSpace:"nowrap",lineHeight:1.2}}>Today</div>
+                    <div style={{position:"absolute",top:0,bottom:0,left:"calc("+todayP+"% - 12px)",width:24,background:"rgba(192,57,43,.04)",zIndex:3,pointerEvents:"none"}}/>
+                    <div style={{position:"absolute",top:0,bottom:0,left:todayP+"%",width:2,background:"#C0392B",opacity:.65,zIndex:20,pointerEvents:"none"}}>
+                      {/* Sticky label — stays visible as the user scrolls down the timeline */}
+                      <div style={{position:"sticky",top:6,fontSize:8.5,fontWeight:800,background:"#C0392B",color:"#fff",padding:"2px 6px",borderRadius:3,whiteSpace:"nowrap",lineHeight:1.2,display:"inline-block",marginLeft:3,boxShadow:"0 1px 3px rgba(0,0,0,.18)",letterSpacing:.3}}>TODAY</div>
                     </div>
                   </>
                 )}
