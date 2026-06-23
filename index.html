@@ -704,7 +704,7 @@ function ViewGuide(props){
         </div>
         {props.launchGlossary && (
           <div style={{marginBottom:14,padding:"10px 14px",border:"1px solid #C8DCF0",borderRadius:8,background:"#EBF5FB",fontSize:12,color:"#1F618D",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-            <span><strong>Roadmap glossary:</strong> definitions of milestone categories used on the roadmap.</span>
+            <span><strong>Launch glossary:</strong> definitions of launch types and milestone categories used on the roadmap.</span>
             <a href={props.launchGlossary} target="_blank" rel="noopener noreferrer" style={{color:"#2471A3",fontWeight:700,textDecoration:"none",padding:"4px 10px",border:"1px solid #2471A3",borderRadius:6,whiteSpace:"nowrap"}}>Open glossary ↗</a>
           </div>
         )}
@@ -2687,7 +2687,7 @@ function rmIsConcept(item){
   return Boolean(item && (item.isConcept || item.planningStatus === "Concept" || /concept/i.test(item.projectType || "")));
 }
 function RmConceptBadge(){
-  return <span title="Concept" style={{fontSize:8,fontWeight:800,width:15,height:15,lineHeight:"15px",borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",background:STATUS_CFG.Concept.bg,color:STATUS_CFG.Concept.tx,border:"1px solid #D7BDE2",verticalAlign:"middle",flexShrink:0}}>C</span>;
+  return <span title="Concept" style={{fontSize:8.5,fontWeight:700,padding:"2px 6px",borderRadius:3,background:STATUS_CFG.Concept.bg,color:STATUS_CFG.Concept.tx,border:"1px solid #D7BDE2",verticalAlign:"middle",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",lineHeight:1,textTransform:"uppercase",letterSpacing:.25}}>Concept</span>;
 }
 function rmExtractParentId(p){
   if(!p) return "";
@@ -3385,8 +3385,9 @@ function RoadmapView(props){
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#fff"}}>
       <div style={{padding:"4px 18px",borderBottom:"1px solid #ebebeb",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#fafafa"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:11,color:"#aaa"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
+        <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:"1 1 auto"}}>
+          <span style={{fontSize:11,color:"#aaa",whiteSpace:"nowrap"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
+          <input style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:240,maxWidth:"36vw"}} placeholder="🔍  Search…" value={search} onChange={function(e){setSearch(e.target.value);}}/>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <HelpButton open={guideOpen} onClick={function(){setGuideOpen(true);}}/>
@@ -3399,10 +3400,10 @@ function RoadmapView(props){
                 borderRadius:6,
                 background:flaggedOnly ? "#FEF3C7" : "#FFFBEB",
                 color:"#7D6008",
-                cursor:"pointer",fontWeight:700,
+                cursor:"pointer",fontWeight:500,
                 display:"inline-flex",alignItems:"center",gap:6,
               }}>
-              <span style={{fontSize:15,lineHeight:1,color:"#B7950B",fontWeight:900}}>⚠</span>
+              <span style={{fontSize:14,lineHeight:1,color:"#B7950B",fontWeight:400}}>⚠</span>
               {flaggedOnly ? "Showing capacity warnings ("+flaggedCount+") · click to clear" : "View capacity warnings ("+flaggedCount+")"}
             </button>
           )}
@@ -3474,9 +3475,7 @@ function RoadmapView(props){
           <RmTog on={showAud} onClick={function(){setShowAud(!showAud);}}>Show badges</RmTog>
           <RmTog on={showLeg} onClick={function(){setShowLeg(!showLeg);}}>Legend</RmTog>
         </div>
-        <div style={{marginLeft:"auto"}}>
-          <input style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}} placeholder="🔍  Search…" value={search} onChange={function(e){setSearch(e.target.value);}}/>
-        </div>
+
       </div>
 
       {showLeg && (
@@ -3496,7 +3495,7 @@ function RoadmapView(props){
           </div>
           <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
             <span style={{fontSize:9,textTransform:"uppercase",color:"#bbb",fontWeight:700,letterSpacing:.5}}>Badges</span>
-            <span style={{display:"flex",alignItems:"center",gap:5}}><RmConceptBadge/><span>Concept</span></span>
+            <span style={{display:"flex",alignItems:"center",gap:5}}><RmConceptBadge/></span>
             {RM_TYPE_KEYS.map(function(t){return (
               <span key={t} style={{display:"flex",alignItems:"center",gap:5}}>
                 <span style={{fontSize:8,fontWeight:700,width:14,height:14,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[t],color:RM_TYPE_COLOR[t]}}>{RM_TYPE_SHORT[t]}</span>
@@ -3565,7 +3564,7 @@ function RoadmapView(props){
                           onMouseEnter={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="#eef4fa";}}
                           onMouseLeave={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="transparent";}}>
                           {/* Option 2 layout: initiative ID has a fixed rail, while the name gets the widest uninterrupted space. */}
-                          <div style={{width:64,flexShrink:0,alignSelf:"stretch",display:"flex",flexDirection:"column",alignItems:"flex-start",justifyContent:"center",gap:3,paddingRight:8,marginRight:8,borderRight:"1px solid #f0f2f4"}}>
+                          <div style={{width:74,flexShrink:0,alignSelf:"stretch",display:"flex",flexDirection:"column",alignItems:"flex-start",justifyContent:"center",gap:3,paddingRight:8,marginRight:8,borderRight:"1px solid #f0f2f4"}}>
                             <span style={{fontSize:10,color:"#8a96a3",fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace",fontWeight:600,whiteSpace:"nowrap"}}>{item.id}</span>
                             {showAud && rmIsConcept(item) ? <RmConceptBadge/> : <span style={{height:15}}/>}
                           </div>
@@ -3579,12 +3578,12 @@ function RoadmapView(props){
                                 IS_ROADMAP_ONLY ? (
                                   <span
                                     title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity for this initiative: "+noCapTeams.map(function(t){return t.name;}).join(", ")}
-                                    style={{fontSize:15,lineHeight:1,color:"#B7950B",fontWeight:900,flexShrink:0,cursor:"help"}}>⚠</span>
+                                    style={{fontSize:14,lineHeight:1,color:"#B7950B",fontWeight:400,flexShrink:0,cursor:"help"}}>⚠</span>
                                 ) : (
                                   <span
                                     onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                                     title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
-                                    style={{fontSize:15,lineHeight:1,color:"#B7950B",fontWeight:900,flexShrink:0,cursor:"pointer"}}>⚠</span>
+                                    style={{fontSize:14,lineHeight:1,color:"#B7950B",fontWeight:400,flexShrink:0,cursor:"pointer"}}>⚠</span>
                                 )
                               )}
                             </div>
@@ -3815,7 +3814,7 @@ function RoadmapView(props){
           {icon:"↔", title:"Dependency mode", color:"#7D6608", bg:"#FFF9EC",
             body:<>Turn on <strong>↔ Dependency mode</strong>, then click an initiative. The focus row turns amber, upstream dependencies turn yellow, impacted downstream rows turn blue, and unrelated rows fade.</>},
           {icon:"⚠", title:"Capacity warning", color:"#B7950B", bg:"#FFFBEB",
-            body:<>A gold <strong style={{color:"#B7950B",fontSize:14,fontWeight:900}}>⚠</strong> icon means one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the icon to jump directly to that initiative on the Capacity tab, or use the <strong>View capacity warnings</strong> button at the top to filter to all flagged items at once.</>},
+            body:<>A gold <strong style={{color:"#B7950B",fontSize:14,fontWeight:400}}>⚠</strong> icon means one or more teams flagged "No Capacity Remaining" for that initiative on the current Capacity sheet. Click the icon to jump directly to that initiative on the Capacity tab, or use the <strong>View capacity warnings</strong> button at the top to filter to all flagged items at once.</>},
           {icon:"🖨", title:"Print & filters", color:"#185FA5", bg:"#F4FAFF",
             body:<>The <strong>Print</strong> button opens a clean, landscape-oriented snapshot of the currently filtered roadmap in a new tab, ready to print or save as a PDF.</>},
           {icon:"🔗", title:"Cross-view navigation", color:"#117A65", bg:"#F4FFFB",
