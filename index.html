@@ -2592,7 +2592,7 @@ function rmResolveGoal(rawValue){
 const RM_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const RM_MILESTONE_COLOR = "#F5A800";
 const RM_ROW_H = 44;
-const RM_LABEL_W = 300;
+const RM_LABEL_W = 320;
 const RM_TYPE_KEYS  = ["Participant","Researcher","Internal/Consortium"];
 const RM_TYPE_COLOR = {"Participant":"#2471A3","Researcher":"#1E8449","Internal/Consortium":"#5D6D7E"};
 const RM_TYPE_SHORT = {"Participant":"P","Researcher":"R","Internal/Consortium":"I"};
@@ -3452,8 +3452,8 @@ function RoadmapView(props){
         <RmSep/>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <RmTog on={showAud} onClick={function(){setShowAud(!showAud);}}>Show badges</RmTog>
-          <RmTog on={hideTBD} onClick={function(){setHideTBD(!hideTBD);}} title="TBD = initiatives with no scheduled start, end, or quarter.">
-            {hideTBD && tbdHiddenCount > 0 ? "Hide TBD ("+tbdHiddenCount+")" : "Hide TBD"}
+          <RmTog on={hideTBD} onClick={function(){setHideTBD(!hideTBD);}} title="Hide initiatives with no scheduled start, end, or quarter.">
+            {hideTBD && tbdHiddenCount > 0 ? "Hide unscheduled ("+tbdHiddenCount+")" : "Hide unscheduled"}
           </RmTog>
           <RmTog on={showLeg} onClick={function(){setShowLeg(!showLeg);}}>Legend</RmTog>
         </div>
@@ -3549,12 +3549,12 @@ function RoadmapView(props){
                           onMouseLeave={function(e){if(role==="normal" && expanded !== item.id) e.currentTarget.style.background="transparent";}}>
                           {/* Leading indicators: audience badge, capacity flag, dependency role */}
                           <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-                            {showAud && RM_TYPE_SHORT[item.type] && <span title={item.type} style={{fontSize:8,fontWeight:700,width:16,height:16,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{RM_TYPE_SHORT[item.type]}</span>}
+                            {showAud && RM_TYPE_SHORT[item.type] && <span title={"Audience: "+item.type} style={{fontSize:8,fontWeight:700,width:16,height:16,borderRadius:3,display:"inline-flex",alignItems:"center",justifyContent:"center",background:RM_TYPE_BG[item.type] || "#eee",color:RM_TYPE_COLOR[item.type] || "#666",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",cursor:"help"}}>{RM_TYPE_SHORT[item.type]}</span>}
                             {showAud && capacityFlagged && (
                               <span
                                 onClick={function(e){e.stopPropagation(); props.onNavigateView("capacity", item.id);}}
                                 title={noCapTeams.length+" team"+(noCapTeams.length === 1 ? "" : "s")+" flagged no capacity: "+noCapTeams.map(function(t){return t.name;}).join(", ")+" — click to view in Capacity"}
-                                style={{fontSize:10,fontWeight:800,color:"#fff",background:"#C0392B",cursor:"pointer",lineHeight:1,border:"none",padding:"3px 6px",borderRadius:3,flexShrink:0}}>!</span>
+                                style={{fontSize:10,fontWeight:800,color:"#fff",background:"#922B21",cursor:"pointer",lineHeight:1,border:"none",padding:"3px 6px",borderRadius:3,flexShrink:0}}>!</span>
                             )}
                           </div>
                           {/* Main label: name on top, ID + status badges below */}
@@ -3563,10 +3563,6 @@ function RoadmapView(props){
                             <div style={{display:"flex",alignItems:"center",gap:5,minHeight:13,lineHeight:"13px",overflow:"hidden"}}>
                               <span style={{fontSize:9.5,color:"#9aa3ad",fontFamily:"monospace",flexShrink:0}}>{item.id}</span>
                               {showAud && rmIsConcept(item) && <RmConceptBadge/>}
-                              {rmIsTBD(item) && <span title="No scheduled start, end, or quarter" style={{fontSize:7.5,fontWeight:600,padding:"1px 4px",borderRadius:3,background:"#f0f0f0",color:"#999",border:"1px solid #e8e8e8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>TBD</span>}
-                              {depMode && rmRelatedDepIds(item).length > 0 && <span title="Has dependencies" style={{fontSize:7.5,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#FEF9E7",color:"#7D6608",border:"1px solid #F5E6A8",flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>↔</span>}
-                              {rs.label && <span title="Dependency role" style={{fontSize:7.5,fontWeight:800,padding:"1px 4px",borderRadius:3,background:"#fff",color:rs.color,border:"1px solid "+rs.border,flexShrink:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>{rs.label}</span>}
-                              {showAud && rmInitStatusDisplay(item) && <span style={{fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,background:rmInitStatusDisplay(item).bg,color:rmInitStatusDisplay(item).tx,border:"1px solid "+rmInitStatusDisplay(item).border,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",lineHeight:"12px",flexShrink:0}}>{rmInitStatusDisplay(item).icon} {rmInitStatusDisplay(item).label}</span>}
                             </div>
                           </div>
                         </div>
@@ -3606,12 +3602,7 @@ function RoadmapView(props){
                             <RmGridLines n={cols.length} faint={true}/>
                             {hasDates && w > 0.2 && (
                               <div onClick={function(){selectInitiative(item.id);}} title={renderText(item.name)}
-                                style={{position:"absolute",top:9,height:20,borderRadius:4,cursor:"pointer",left:l2+"%",width:w+"%",background:barCol,opacity:isDone ? .35 : .92,display:"flex",alignItems:"center",overflow:"hidden",zIndex:2}}>
-                                {w > 5 && <span style={{fontSize:10,fontWeight:500,padding:"0 5px",color:"#1a1a1a",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{renderText(item.name)}</span>}
-                              </div>
-                            )}
-                            {hasDates && w > 0.2 && w <= 5 && r2 !== null && (
-                              <div style={{position:"absolute",top:9,height:20,left:"calc("+r2+"% + 4px)",whiteSpace:"nowrap",fontSize:10,color:"#999",lineHeight:"20px",pointerEvents:"none",zIndex:3}}>{renderText(item.name)}</div>
+                                style={{position:"absolute",top:9,height:20,borderRadius:4,cursor:"pointer",left:l2+"%",width:w+"%",background:barCol,opacity:isDone ? .35 : .85,zIndex:2,boxShadow:"inset 0 0 0 1px rgba(0,0,0,.05)"}}/>
                             )}
                             {!hasDates && qW > 0.2 && (
                               <div onClick={function(){selectInitiative(item.id);}}
@@ -3620,9 +3611,7 @@ function RoadmapView(props){
                               </div>
                             )}
                             {!hasDates && !qW && (
-                              <div onClick={function(){selectInitiative(item.id);}} title="No scheduled start, end, or quarter" style={{position:"absolute",top:15,left:"4%",right:"4%",height:8,borderRadius:3,cursor:"pointer",zIndex:2,background:"repeating-linear-gradient(90deg,#e0e0e0 0,#e0e0e0 4px,transparent 4px,transparent 8px)",opacity:.35}}>
-                                <span style={{fontSize:7,color:"#bbb",fontWeight:600,background:"rgba(255,255,255,.9)",padding:"0 3px",borderRadius:2}}>TBD</span>
-                              </div>
+                              <div onClick={function(){selectInitiative(item.id);}} title="No scheduled dates yet" style={{position:"absolute",top:15,left:"4%",right:"4%",height:8,borderRadius:3,cursor:"pointer",zIndex:2,background:"repeating-linear-gradient(90deg,#e0e0e0 0,#e0e0e0 4px,transparent 4px,transparent 8px)",opacity:.35}}/>
                             )}
                             {spread.map(function(m){return (
                               <span key={m.id}
