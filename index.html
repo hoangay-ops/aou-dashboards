@@ -22,7 +22,7 @@ button,select,input{font-family:inherit;}
 </style>
 </head>
 <body>
-<div id="root" style="min-height:100vh;height:100vh;display:flex;flex-direction:column;"></div>
+<div id="root" style="min-height:100vh;display:flex;flex-direction:column;"></div>
 <script type="text/babel" data-presets="env,react">
 
 /* SHARED CONSTANTS */
@@ -317,6 +317,10 @@ const IS_ROADMAP_ONLY = (function(){
    icons in the IdentityBlock and inline messages) only render when admin
    mode is on. Senior leaders viewing the embedded dashboard see a clean view;
    the Program Lead opens the same URL with ?admin=1 to see DQ warnings. */
+const IS_EMBEDDED = (function(){
+  try { return window.self !== window.top; } catch(e){ return true; }
+})();
+
 const IS_ADMIN = (function(){
   try {
     var params = new URLSearchParams(window.location.search || "");
@@ -937,7 +941,7 @@ function QpeDrillPanel(props){
   return (
     <div ref={function(el){
       if(el){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
-    }} data-drilldown-panel="qpe" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+    }} data-drilldown-panel="qpe" style={{position:IS_EMBEDDED?"absolute":"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
       <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
       <IdentityBlock init={init} goalsRef={goalsRef} currentView="qpe" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
       <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
@@ -1094,7 +1098,7 @@ function QpeGoalPanel(props){
   return (
     <div ref={function(el){
       if(el){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
-    }} data-drilldown-panel="qpe-goal" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+    }} data-drilldown-panel="qpe-goal" style={{position:IS_EMBEDDED?"absolute":"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
       <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
       <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0,borderTop:"4px solid "+goalBorderColor(g)}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
@@ -1143,7 +1147,7 @@ function QpeListPanel(props){
   return (
     <div ref={function(el){
       if(el){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
-    }} data-drilldown-panel="qpe-list" style={{position:"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
+    }} data-drilldown-panel="qpe-list" style={{position:IS_EMBEDDED?"absolute":"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
       <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
       <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
@@ -2109,7 +2113,7 @@ function CapDrillPanel(props){
     cap.teams.forEach(function(t){if(byStaff[t.staff]) byStaff[t.staff].push(t);});
   }
   return (
-    <div data-drilldown-panel="capacity" style={{position:"fixed",inset:0,zIndex:900,display:"flex",justifyContent:"flex-end"}}>
+    <div data-drilldown-panel="capacity" style={{position:IS_EMBEDDED?"absolute":"fixed",inset:0,zIndex:900,display:"flex",justifyContent:"flex-end"}}>
       <div onClick={props.onClose} style={{flex:1,background:"rgba(0,0,0,.22)"}}/>
       <div style={{width:440,maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",display:"flex",flexDirection:"column",overflow:"hidden",position:"relative"}}>
         <button onClick={props.onClose} style={{position:"absolute",top:14,right:18,border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1,zIndex:10}}>×</button>
