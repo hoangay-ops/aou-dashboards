@@ -3118,7 +3118,42 @@ function rmPrintRoadmap(){
     catch(e){ alert("The print view opened, but the print dialog was blocked. Use File > Print in the new tab."); }
   }, 350);
 }
-
+/* Floating "back to top" button shown only when embedded in Google Sites.
+   The dashboard sits inside an iframe and the user often scrolls deep into
+   timeline rows; this gives them a one-tap way back to the dashboard header
+   (range selector, filters, search) without scrolling all the way up. */
+function RoadmapBackToTop(){
+  var [show, setShow] = useState(false);
+  useEffect(function(){
+    if(!IS_EMBEDDED) return;
+    function check(){
+      var y = window.scrollY || document.documentElement.scrollTop || 0;
+      setShow(y > 200);
+    }
+    check();
+    window.addEventListener("scroll", check, {passive:true});
+    return function(){ window.removeEventListener("scroll", check); };
+  }, []);
+  if(!IS_EMBEDDED || !show) return null;
+  return (
+    <button onClick={function(){
+      try {
+        window.scrollTo({top:0, behavior:"smooth"});
+        if(document.documentElement) document.documentElement.scrollTop = 0;
+        if(document.body) document.body.scrollTop = 0;
+      } catch(e){}
+    }} style={{
+      position:"fixed", bottom:18, right:18, zIndex:1500,
+      padding:"8px 14px", borderRadius:20,
+      background:"#185FA5", color:"#fff",
+      border:"none", fontSize:12, fontWeight:600,
+      cursor:"pointer", boxShadow:"0 4px 12px rgba(0,0,0,.22)",
+      display:"inline-flex", alignItems:"center", gap:6,
+    }}>
+      <span style={{fontSize:14,lineHeight:1}}>↑</span> Back to top
+    </button>
+  );
+}
 function RoadmapView(props){
   var data = props.data;
   var [items, setItems] = useState([]);
@@ -3142,7 +3177,11 @@ function RoadmapView(props){
   var [depFocus, setDepFocus] = useState(null);
   var [guideOpen, setGuideOpen] = useState(false);
 
-  function setExpanded(v){ setExpandedRaw(v); if(v) scrollViewportToTop(); }
+  /* In standalone, scroll the user to the top so the side panel anchors
+     into view. In Google Sites embed mode, the iframe's "top" is often
+     way above the user's current scroll position, so the auto-scroll
+     yanks them off the row they just clicked. Skip it when embedded. */
+  function setExpanded(v){ setExpandedRaw(v); if(v && !IS_EMBEDDED) scrollViewportToTop(); }
   var expanded = expandedRaw;
 
   useEffect(function(){
@@ -3803,6 +3842,8 @@ function RoadmapView(props){
           <div style={{opacity:.7}}>{tooltip.date} · {tooltip.icon === "star" ? "Tech Ready" : "Comms"}{tooltip.cat ? " · "+tooltip.cat : ""}</div>
         </div>
       )}
+
+      <RoadmapBackToTop/>
 
       <ViewGuide
         open={guideOpen}
