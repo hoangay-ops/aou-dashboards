@@ -530,11 +530,23 @@ document.querySelectorAll(".fake-row").forEach(function(row){
     viewContainer.appendChild(dd);
     currentDrilldown = dd;
 
+    // Extend the view container's min-height so the drill-down isn't clipped
+    // when opened near the bottom of the content. Page grows naturally; the
+    // user can scroll down to read the full drill-down. Reset on close.
+    var ddHeight = dd.offsetHeight;
+    var requiredHeight = topOffset + ddHeight;
+    var currentMinHeight = viewContainer.offsetHeight;
+    if(requiredHeight > currentMinHeight){
+      viewContainer.style.minHeight = requiredHeight + "px";
+    }
+
     dd.querySelector(".drilldown-close").addEventListener("click", function(e){
       e.stopPropagation();
       dd.remove();
       row.classList.remove("selected");
       currentDrilldown = null;
+      // Reset the view container height so the page shrinks back.
+      viewContainer.style.minHeight = "";
     });
 
     // No scroll — let the user stay where they are. The drill-down appears
