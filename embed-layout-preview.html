@@ -230,25 +230,23 @@ html,body{
 .section-header span:last-child{flex:1; height:1px; background:#ddd;}
 
 /* Drill-down panel — absolute-positioned, anchored to the view container.
-   In embed mode, the view container has position:relative and no
-   overflow:hidden, so the panel can extend down past view bounds. */
+   In embed mode, the panel's `top` is set dynamically when the row is
+   clicked so the panel appears beside the clicked row rather than at
+   the top of the view container. */
 .view-container{
   position:relative;  /* anchor for drill-down */
 }
 
 .drilldown{
   position:absolute;
-  top:0;
   right:0;
-  bottom:0;
   width:440px;
   max-width:42vw;
   background:#fff;
   border-left:1px solid #ececec;
   box-shadow:-4px 0 16px rgba(0,0,0,.08);
   z-index:40;
-  /* In embed mode: drill-down anchors to view-container top.
-     User can scroll iframe up to see it; sticky header stays visible. */
+  /* top is set dynamically per click */
 }
 
 .drilldown-inner{
@@ -335,6 +333,28 @@ html,body{
 }
 .guide-callout strong{font-weight:700;}
 
+/* Back-to-top floating button — embed mode only, visible when scrolled. */
+.back-to-top{
+  position:fixed;
+  bottom:18px;
+  right:18px;
+  z-index:1500;
+  padding:8px 14px;
+  border-radius:20px;
+  background:#185FA5;
+  color:#fff;
+  border:none;
+  font-size:12px;
+  font-weight:600;
+  cursor:pointer;
+  box-shadow:0 4px 12px rgba(0,0,0,.22);
+  display:none;
+  align-items:center;
+  gap:6px;
+}
+.back-to-top.show{display:inline-flex;}
+.back-to-top span{font-size:14px; line-height:1;}
+
 .mode-indicator{
   position:fixed;
   bottom:18px;
@@ -397,6 +417,7 @@ html,body{
   </div>
 
   <div class="mode-indicator" id="modeIndicator"></div>
+  <button class="back-to-top" id="backToTop"><span>↑</span> Back to top</button>
 </div>
 
 <script>
@@ -454,7 +475,7 @@ for(var i = 0; i < 60; i++){
 }
 rowsContainer.innerHTML = rowsHtml;
 
-// Click handler — opens drill-down
+// Click handler — opens drill-down beside the clicked row
 var viewContainer = document.getElementById("viewContainer");
 var currentDrilldown = null;
 document.querySelectorAll(".fake-row").forEach(function(row){
@@ -498,6 +519,14 @@ document.querySelectorAll(".fake-row").forEach(function(row){
         '<div class="dd-fake-tall">Tall content to simulate drill-down height</div>' +
       '</div>';
 
+    // Position the drill-down so its top is roughly even with the clicked row.
+    // Calculate the row's offset relative to the view container.
+    var rowRect = row.getBoundingClientRect();
+    var containerRect = viewContainer.getBoundingClientRect();
+    var topOffset = rowRect.top - containerRect.top;
+    // Nudge up slightly so the drill-down's first line sits at the row's top edge.
+    dd.style.top = Math.max(0, topOffset) + "px";
+
     viewContainer.appendChild(dd);
     currentDrilldown = dd;
 
@@ -508,21 +537,32 @@ document.querySelectorAll(".fake-row").forEach(function(row){
       currentDrilldown = null;
     });
 
-    // In embed mode, scroll the user back up to see the drill-down top.
-    // In standalone, the drill-down is at the top of the view-container,
-    // which is below the header, so a small scroll-into-view helps.
-    if(!IS_EMBEDDED){
-      // Standalone: scroll the view container into view
-      viewContainer.scrollIntoView({block:"start", behavior:"smooth"});
-    } else {
-      // Embed: scroll just enough that the drill-down top is below the
-      // sticky shell. Calculate sticky shell height dynamically.
-      var stickyHeight = document.getElementById("stickyShell").offsetHeight;
-      var viewTop = viewContainer.getBoundingClientRect().top + window.scrollY;
-      window.scrollTo({top: viewTop - stickyHeight - 8, behavior:"smooth"});
-    }
+    // No scroll — let the user stay where they are. The drill-down appears
+    // beside the row they just clicked, so it's already in their visible area.
   });
 });
+
+// Back-to-top button — embed mode only, shows when scrolled past 200px
+var backToTopBtn = document.getElementById("backToTop");
+if(IS_EMBEDDED){
+  function checkScroll(){
+    var y = window.scrollY || document.documentElement.scrollTop || 0;
+    if(y > 200){
+      backToTopBtn.classList.add("show");
+    } else {
+      backToTopBtn.classList.remove("show");
+    }
+  }
+  window.addEventListener("scroll", checkScroll, {passive:true});
+  checkScroll();
+  backToTopBtn.addEventListener("click", function(){
+    try {
+      window.scrollTo({top:0, behavior:"smooth"});
+      if(document.documentElement) document.documentElement.scrollTop = 0;
+      if(document.body) document.body.scrollTop = 0;
+    } catch(e){}
+  });
+}
 
 // Tab switching (cosmetic only for this preview)
 document.querySelectorAll(".tab").forEach(function(tab){
