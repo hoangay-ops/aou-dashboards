@@ -22,6 +22,86 @@ button,select,input{font-family:inherit;}
 .tab{padding:10px 18px;border:1px solid transparent;background:transparent;font-size:14px;font-weight:700;color:#6f7f8f;cursor:pointer;border-bottom:4px solid transparent;margin-bottom:-1px;transition:color .12s,border-color .12s,background .12s,box-shadow .12s;letter-spacing:.2px;border-radius:10px 10px 0 0;}
 .tab:hover{color:#2471A3;}
 .tab.active{color:#185FA5;border-color:#C8DCF0;border-bottom-color:#185FA5;background:#EBF5FB;box-shadow:inset 0 -1px 0 #185FA5;}
+
+/* EMBED MODE STYLES — activated when the <body> has class "aou-embedded".
+   When embedded in Google Sites, the dashboard flows as one long page
+   with a sticky header + tab bar, rather than filling a captive viewport
+   with internal scroll containers.
+   Note: display properties are preserved (not forced to block) so nested
+   flex layouts like the Roadmap timeline continue to work correctly.
+   We only neutralize the constraining properties (overflow, height, flex). */
+body.aou-embedded #root{min-height:0;height:auto;}
+body.aou-embedded .aou-app-shell{height:auto;}
+body.aou-embedded .aou-sticky-shell{position:sticky;top:0;z-index:50;background:#fff;box-shadow:0 1px 0 #ececec, 0 2px 4px rgba(0,0,0,.04);}
+body.aou-embedded .aou-view-container{flex:none;overflow:visible;height:auto;}
+body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
+
+/* EMBED MODE: modal backdrop for drill-downs. Centered on browser viewport,
+   dimmed background, close on backdrop/Escape/X. Inner content scrolls
+   independently if content exceeds max-height. */
+.aou-modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(20,30,45,.46);
+  z-index:2000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:40px 20px;
+}
+.aou-modal-panel{
+  width:560px;
+  max-width:calc(100vw - 40px);
+  max-height:calc(100vh - 80px);
+  background:#fff;
+  border-radius:12px;
+  box-shadow:0 20px 50px rgba(0,0,0,.28);
+  display:flex;
+  flex-direction:column;
+  position:relative;
+  overflow:hidden;
+}
+.aou-modal-panel .aou-modal-close{
+  position:absolute;
+  top:12px;
+  right:14px;
+  border:none;
+  background:transparent;
+  font-size:26px;
+  color:#aaa;
+  cursor:pointer;
+  padding:0 6px;
+  line-height:1;
+  z-index:10;
+}
+.aou-modal-panel .aou-modal-close:hover{color:#555;}
+.aou-modal-panel .aou-modal-inner{
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+
+/* EMBED MODE: Back-to-top floating button */
+.aou-back-to-top{
+  position:fixed;
+  bottom:18px;
+  right:18px;
+  z-index:1500;
+  padding:8px 14px;
+  border-radius:20px;
+  background:#185FA5;
+  color:#fff;
+  border:none;
+  font-size:12px;
+  font-weight:600;
+  cursor:pointer;
+  box-shadow:0 4px 12px rgba(0,0,0,.22);
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
 </style>
 </head>
 <body>
@@ -313,6 +393,13 @@ const IS_ROADMAP_ONLY = (function(){
 const IS_EMBEDDED = (function(){
   try { return window.self !== window.top; } catch(e){ return true; }
 })();
+
+/* Tag the body so embed-mode CSS rules apply (see .aou-embedded rules in
+   the <style> block). Doing this here rather than in JSX guarantees the
+   class is present before React mounts. */
+if(IS_EMBEDDED && document.body){
+  document.body.classList.add("aou-embedded");
+}
 
 const IS_ADMIN = (function(){
   try {
@@ -724,6 +811,105 @@ function HelpButton(props){
   );
 }
 
+/* EMBED MODE: Modal wrapper for drill-down panels. Renders a centered
+   overlay on the browser viewport with a dimmed backdrop. Closes on
+   backdrop click, Escape key, or X button. Only used when IS_EMBEDDED.
+   In standalone mode, drill-downs render inline (their original behavior).
+   Locks body scroll while mounted so the page underneath the dimmed
+   backdrop doesn't scroll. `overscroll-behavior:contain` on the inner
+   scroll region prevents scroll chaining when the user scrolls past
+   the top or bottom of the modal content. */
+function AouModal(props){
+  useEffect(function(){
+    function esc(e){ if(e.key === "Escape" && props.onClose) props.onClose(); }
+    document.addEventListener("keydown", esc);
+    // Lock body scroll while modal is open. Preserve the current
+    // scroll position so we can restore it on close (some browsers
+    // reset scroll to top when overflow:hidden is applied to body).
+    var prevOverflow = document.body.style.overflow;
+    var prevPaddingRight = document.body.style.paddingRight;
+    var scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    // Compensate for the disappearing scrollbar so layout doesn't jump.
+    if(scrollbarWidth > 0){
+      document.body.style.paddingRight = scrollbarWidth + "px";
+    }
+    return function(){
+      document.removeEventListener("keydown", esc);
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+    };
+  }, [props.onClose]);
+  return (
+    <div className="aou-modal-backdrop" onClick={function(e){
+      if(e.target === e.currentTarget && props.onClose) props.onClose();
+    }}>
+      <div className="aou-modal-panel">
+        <button className="aou-modal-close" onClick={props.onClose} aria-label="Close">×</button>
+        <div className="aou-modal-inner">
+          {props.children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* EMBED MODE: Floating "back to top" button. Appears when the user has
+   scrolled past 200px. Not visible in standalone mode. */
+function AouBackToTop(){
+  var [show, setShow] = useState(false);
+  useEffect(function(){
+    if(!IS_EMBEDDED) return;
+    function check(){
+      var y = window.scrollY || document.documentElement.scrollTop || 0;
+      setShow(y > 200);
+    }
+    check();
+    window.addEventListener("scroll", check, {passive:true});
+    return function(){ window.removeEventListener("scroll", check); };
+  }, []);
+  if(!IS_EMBEDDED || !show) return null;
+  return (
+    <button className="aou-back-to-top" onClick={function(){
+      try {
+        window.scrollTo({top:0, behavior:"smooth"});
+        if(document.documentElement) document.documentElement.scrollTop = 0;
+        if(document.body) document.body.scrollTop = 0;
+      } catch(e){}
+    }}>
+      <span style={{fontSize:14,lineHeight:1}}>↑</span> Back to top
+    </button>
+  );
+}
+
+/* EMBED MODE: Measure the sticky shell (header + tab bar) height and expose
+   it as a CSS variable `--aou-sticky-offset` on <html>. Downstream sticky
+   elements (like the Roadmap timeline header) use this to stick BELOW the
+   sticky shell instead of behind it. Recalculated on mount and window
+   resize so it stays accurate even if header contents change (drift
+   banner appearing, wrapping chips, etc.). */
+function useStickyOffset(){
+  useEffect(function(){
+    if(!IS_EMBEDDED) return;
+    function measure(){
+      var shell = document.querySelector(".aou-sticky-shell");
+      var h = shell ? shell.offsetHeight : 0;
+      document.documentElement.style.setProperty("--aou-sticky-offset", h + "px");
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    // Remeasure a few times shortly after mount to catch async content
+    // (data loading, banners appearing, etc.) that changes shell height.
+    var t1 = setTimeout(measure, 100);
+    var t2 = setTimeout(measure, 500);
+    var t3 = setTimeout(measure, 2000);
+    return function(){
+      window.removeEventListener("resize", measure);
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+    };
+  }, []);
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    QPE VIEW
    ════════════════════════════════════════════════════════════════════════════ */
@@ -912,11 +1098,19 @@ function QpeDrillPanel(props){
   var cap = capRef[init.id] || null;
   var possiblyTotal = cap ? cap.possiblyXS + cap.possiblyS + cap.possiblyM + cap.possiblyL + cap.possiblyXL : 0;
 
+  // EMBED: rendered inside <AouModal> — use static block layout instead of
+  // fixed/absolute overlay. Modal wrapper handles close button + backdrop.
+  var wrapperStyle = props.embedded
+    ? {display:"flex",flexDirection:"column",flex:1,minHeight:0}
+    : {position:IS_EMBEDDED?"absolute":"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"};
+
   return (
     <div ref={function(el){
       if(el && !IS_EMBEDDED){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
-    }} data-drilldown-panel="qpe" style={{position:IS_EMBEDDED?"absolute":"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
-      <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
+    }} data-drilldown-panel="qpe" style={wrapperStyle}>
+      {!props.embedded && (
+        <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
+      )}
       <IdentityBlock init={init} goalsRef={goalsRef} currentView="qpe" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
       <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
         <div style={{marginBottom:14,padding:"10px 12px",background:"#fafbfc",border:"1px solid #ececec",borderRadius:6}}>
@@ -1069,11 +1263,17 @@ function QpeGoalPanel(props){
     };
   });
 
+  var wrapperStyle = props.embedded
+    ? {display:"flex",flexDirection:"column",flex:1,minHeight:0}
+    : {position:IS_EMBEDDED?"absolute":"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"};
+
   return (
     <div ref={function(el){
       if(el && !IS_EMBEDDED){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
-    }} data-drilldown-panel="qpe-goal" style={{position:IS_EMBEDDED?"absolute":"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
-      <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
+    }} data-drilldown-panel="qpe-goal" style={wrapperStyle}>
+      {!props.embedded && (
+        <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
+      )}
       <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0,borderTop:"4px solid "+goalBorderColor(g)}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
           <div style={{flex:1,minWidth:0}}>
@@ -1118,11 +1318,16 @@ function QpeGoalPanel(props){
 function QpeListPanel(props){
   if(!props.list) return null;
   var list = props.list;
+  var wrapperStyle = props.embedded
+    ? {display:"flex",flexDirection:"column",flex:1,minHeight:0}
+    : {position:IS_EMBEDDED?"absolute":"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"};
   return (
     <div ref={function(el){
       if(el && !IS_EMBEDDED){ try{ el.scrollIntoView({block:"start",behavior:"smooth"}); }catch(e){} }
-    }} data-drilldown-panel="qpe-list" style={{position:IS_EMBEDDED?"absolute":"fixed",top:0,right:0,bottom:0,width:"440px",maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",zIndex:1000,display:"flex",flexDirection:"column"}}>
-      <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
+    }} data-drilldown-panel="qpe-list" style={wrapperStyle}>
+      {!props.embedded && (
+        <button onClick={props.onClose} title="Close" aria-label="Close panel" style={{position:"absolute",top:10,right:12,border:"none",background:"rgba(255,255,255,.95)",fontSize:24,color:"#666",cursor:"pointer",padding:"2px 10px 4px",lineHeight:1,zIndex:20,borderRadius:6,boxShadow:"0 1px 3px rgba(0,0,0,.12)"}}>×</button>
+      )}
       <div style={{padding:"16px 20px",borderBottom:"1px solid #ececec",background:"#fafbfc",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
           <div style={{flex:1,minWidth:0}}>
@@ -1475,7 +1680,7 @@ function QpeView(props){
      keeping it in the user's scroll context. In standalone, this has
      no effect because drill-downs use position:fixed. */
   return (
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative"}}>
+    <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden",position:"relative"}}>
       <div style={{padding:"10px 24px",background:"#fff",borderBottom:"1px solid #ececec",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
         <span style={{fontSize:10,textTransform:"uppercase",color:"#aaa",fontWeight:700,letterSpacing:.05,marginRight:2}}>Focus</span>
         <select value={goalFocus} onChange={function(e){setGoalFocus(e.target.value);}} style={{fontSize:11.5,padding:"5px 10px",border:"1px solid "+(goalFocus !== "all" ? "#2471A3" : "#dcdcdc"),borderRadius:18,background:goalFocus !== "all" ? "#EBF5FB" : "#fff",color:goalFocus !== "all" ? "#2471A3" : "#555",fontWeight:goalFocus !== "all" ? 600 : 400}}>
@@ -1495,9 +1700,18 @@ function QpeView(props){
         <QpeMainView initiatives={filtered} onDrill={setDrill} onGoalDrill={setGoalDrill} onListDrill={setListDrill} goalFocus={goalFocus} goalsRef={goalsRef}/>
       </div>
 
-      {drillInit && <QpeDrillPanel init={drillInit} capRef={capRef} goalsRef={goalsRef} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap} onClose={function(){setDrill(null);}}/>}
-      {goalDrill && <QpeGoalPanel goalKey={goalDrill} allInitiatives={initiatives} goalsRef={goalsRef} onClose={function(){setGoalDrill(null);}}/>}
-      {listDrill && <QpeListPanel list={listDrill} label={listDrill.label} sublabel={listDrill.sublabel} accent={listDrill.accent} onItemDrill={function(id){setListDrill(null); setDrill(id);}} onClose={function(){setListDrill(null);}}/>}
+      {drillInit && (IS_EMBEDDED
+        ? <AouModal onClose={function(){setDrill(null);}}><QpeDrillPanel init={drillInit} capRef={capRef} goalsRef={goalsRef} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap} onClose={function(){setDrill(null);}} embedded={true}/></AouModal>
+        : <QpeDrillPanel init={drillInit} capRef={capRef} goalsRef={goalsRef} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap} onClose={function(){setDrill(null);}}/>
+      )}
+      {goalDrill && (IS_EMBEDDED
+        ? <AouModal onClose={function(){setGoalDrill(null);}}><QpeGoalPanel goalKey={goalDrill} allInitiatives={initiatives} goalsRef={goalsRef} onClose={function(){setGoalDrill(null);}} embedded={true}/></AouModal>
+        : <QpeGoalPanel goalKey={goalDrill} allInitiatives={initiatives} goalsRef={goalsRef} onClose={function(){setGoalDrill(null);}}/>
+      )}
+      {listDrill && (IS_EMBEDDED
+        ? <AouModal onClose={function(){setListDrill(null);}}><QpeListPanel list={listDrill} label={listDrill.label} sublabel={listDrill.sublabel} accent={listDrill.accent} onItemDrill={function(id){setListDrill(null); setDrill(id);}} onClose={function(){setListDrill(null);}} embedded={true}/></AouModal>
+        : <QpeListPanel list={listDrill} label={listDrill.label} sublabel={listDrill.sublabel} accent={listDrill.accent} onItemDrill={function(id){setListDrill(null); setDrill(id);}} onClose={function(){setListDrill(null);}}/>
+      )}
 
       <ViewGuide
         open={guideOpen}
@@ -2078,82 +2292,101 @@ function CapDrillPanel(props){
   if(cap && cap.teams){
     cap.teams.forEach(function(t){if(byStaff[t.staff]) byStaff[t.staff].push(t);});
   }
+
+  // EMBED: rendered inside <AouModal>. Skip the fixed-position outer wrapper
+  // and the backdrop click-away (the modal provides both).
+  var panelContent = (
+    <>
+      {!props.embedded && (
+        <button onClick={props.onClose} style={{position:"absolute",top:14,right:18,border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1,zIndex:10}}>×</button>
+      )}
+      <IdentityBlock init={init} goalsRef={goalsRef} currentView="capacity" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
+      <div style={{flex:1,overflowY:"auto"}}>
+        <div title={CAP_CI_METHODOLOGY} style={{padding:"14px 18px",borderBottom:"1px solid #eeeff2",background:cs.bg}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div>
+              <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:.5,color:cs.tx,fontWeight:700,opacity:.7,marginBottom:3}}>{cap ? cap.lbl : "Confidence Index"}</div>
+              <div style={{fontSize:34,fontWeight:800,color:cs.tx,lineHeight:1}}>{cap && cap.ciNum != null ? cap.ciNum : "—"}<span style={{fontSize:15,fontWeight:400,opacity:.4}}>/10</span></div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:26,fontWeight:700,color:cs.tx}}>{cap ? Math.round(cap.cf*100) : 0}%</div>
+              <div style={{fontSize:10,color:cs.tx,opacity:.7}}>{cap ? cap.performers : 0} performer{cap && cap.performers !== 1 ? "s" : ""}</div>
+            </div>
+          </div>
+          <div style={{height:7,borderRadius:3,background:cs.tx+"28",overflow:"hidden"}}>
+            <div style={{height:"100%",width:(cap ? Math.round(cap.cf*100) : 0)+"%",background:cs.dot,borderRadius:3,transition:"width .4s"}}/>
+          </div>
+        </div>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid #eeeff2"}}>
+          <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#888",fontWeight:700,marginBottom:10}}>
+            Performers {cap && cap.teams && cap.teams.length > 0 ? "(" + cap.teams.length + " teams)" : ""}
+          </div>
+          {cap && cap.teams && cap.teams.length > 0 ? (
+            <>
+              {["D","P","N"].map(function(staffKey){
+                var group = byStaff[staffKey];
+                if(!group || !group.length) return null;
+                var scfg = CAP_STAFF_CFG[staffKey];
+                return (
+                  <div key={staffKey} style={{marginBottom:10}}>
+                    <div style={{fontSize:10,fontWeight:700,color:scfg.color,marginBottom:5,display:"flex",alignItems:"center",gap:5}}>
+                      {staffKey === "D" ? "✓" : staffKey === "P" ? "~" : "✗"} {scfg.label} ({group.length})
+                    </div>
+                    {group.map(function(t, i){
+                      var loeLbl = CAP_LOE_LABEL[t.q3loe] || t.q3loe || "—";
+                      var totLbl = CAP_LOE_LABEL[t.totalLoe] || t.totalLoe || "—";
+                      return (
+                        <div key={i} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:"0 10px",padding:"5px 10px",marginBottom:2,borderRadius:5,background:scfg.bg,borderLeft:"3px solid "+scfg.color+"55",fontSize:11.5}}>
+                          <span style={{color:"#222",fontWeight:500,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</span>
+                          <span style={{color:"#888",whiteSpace:"nowrap",fontSize:10.5}}>Q3: <strong style={{color:"#444"}}>{loeLbl}</strong></span>
+                          <span style={{color:"#888",whiteSpace:"nowrap",fontSize:10.5}}>3Qtr: <strong style={{color:"#444"}}>{totLbl}</strong></span>
+                          {t.notes && <div style={{gridColumn:"1/-1",fontSize:10,color:"#888",marginTop:3,fontStyle:"italic",whiteSpace:"normal"}}>{t.notes}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </>
+          ) : (
+            <div style={{padding:"20px 0",textAlign:"center",color:"#bbb",fontSize:12,fontStyle:"italic"}}>No performer submissions yet.</div>
+          )}
+        </div>
+        <div style={{padding:"12px 18px",borderBottom:"1px solid #eeeff2"}}>
+          <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#888",fontWeight:700,marginBottom:8}}>Confidence weighting</div>
+          <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"5px 10px",fontSize:11}}>
+            {[["✓","Definitely","+1.0","#1E8449"],["~","Possibly — XS / S","+0.8","#27AE60"],["~","Possibly — M","0","#B7950B"],["~","Possibly — L / XL","−0.5","#E67E22"],["✗","No Capacity","−1.0","#C0392B"]].map(function(r, i){
+              return [
+                <span key={i+"i"} style={{color:r[3],fontWeight:700}}>{r[0]}</span>,
+                <span key={i+"l"} style={{color:"#555"}}>{r[1]}</span>,
+                <span key={i+"w"} style={{color:r[3],fontWeight:600,textAlign:"right"}}>{r[2]}</span>
+              ];
+            })}
+          </div>
+        </div>
+        {init.shortDesc && (
+          <div style={{padding:"12px 18px"}}>
+            <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#888",fontWeight:700,marginBottom:6}}>Summary</div>
+            <div style={{fontSize:12,color:"#555",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{renderText(init.shortDesc)}</div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  if(props.embedded){
+    return (
+      <div data-drilldown-panel="capacity" style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
+        {panelContent}
+      </div>
+    );
+  }
+
   return (
     <div data-drilldown-panel="capacity" style={{position:IS_EMBEDDED?"absolute":"fixed",inset:0,zIndex:900,display:"flex",justifyContent:"flex-end"}}>
       <div onClick={props.onClose} style={{flex:1,background:"rgba(0,0,0,.22)"}}/>
       <div style={{width:440,maxWidth:"42vw",background:"#fff",borderLeft:"1px solid #ececec",boxShadow:"-4px 0 16px rgba(0,0,0,.08)",display:"flex",flexDirection:"column",overflow:"hidden",position:"relative"}}>
-        <button onClick={props.onClose} style={{position:"absolute",top:14,right:18,border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1,zIndex:10}}>×</button>
-        <IdentityBlock init={init} goalsRef={goalsRef} currentView="capacity" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
-        <div style={{flex:1,overflowY:"auto"}}>
-          <div title={CAP_CI_METHODOLOGY} style={{padding:"14px 18px",borderBottom:"1px solid #eeeff2",background:cs.bg}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-              <div>
-                <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:.5,color:cs.tx,fontWeight:700,opacity:.7,marginBottom:3}}>{cap ? cap.lbl : "Confidence Index"}</div>
-                <div style={{fontSize:34,fontWeight:800,color:cs.tx,lineHeight:1}}>{cap && cap.ciNum != null ? cap.ciNum : "—"}<span style={{fontSize:15,fontWeight:400,opacity:.4}}>/10</span></div>
-              </div>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:26,fontWeight:700,color:cs.tx}}>{cap ? Math.round(cap.cf*100) : 0}%</div>
-                <div style={{fontSize:10,color:cs.tx,opacity:.7}}>{cap ? cap.performers : 0} performer{cap && cap.performers !== 1 ? "s" : ""}</div>
-              </div>
-            </div>
-            <div style={{height:7,borderRadius:3,background:cs.tx+"28",overflow:"hidden"}}>
-              <div style={{height:"100%",width:(cap ? Math.round(cap.cf*100) : 0)+"%",background:cs.dot,borderRadius:3,transition:"width .4s"}}/>
-            </div>
-          </div>
-          <div style={{padding:"14px 18px",borderBottom:"1px solid #eeeff2"}}>
-            <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#888",fontWeight:700,marginBottom:10}}>
-              Performers {cap && cap.teams && cap.teams.length > 0 ? "(" + cap.teams.length + " teams)" : ""}
-            </div>
-            {cap && cap.teams && cap.teams.length > 0 ? (
-              <>
-                {["D","P","N"].map(function(staffKey){
-                  var group = byStaff[staffKey];
-                  if(!group || !group.length) return null;
-                  var scfg = CAP_STAFF_CFG[staffKey];
-                  return (
-                    <div key={staffKey} style={{marginBottom:10}}>
-                      <div style={{fontSize:10,fontWeight:700,color:scfg.color,marginBottom:5,display:"flex",alignItems:"center",gap:5}}>
-                        {staffKey === "D" ? "✓" : staffKey === "P" ? "~" : "✗"} {scfg.label} ({group.length})
-                      </div>
-                      {group.map(function(t, i){
-                        var loeLbl = CAP_LOE_LABEL[t.q3loe] || t.q3loe || "—";
-                        var totLbl = CAP_LOE_LABEL[t.totalLoe] || t.totalLoe || "—";
-                        return (
-                          <div key={i} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:"0 10px",padding:"5px 10px",marginBottom:2,borderRadius:5,background:scfg.bg,borderLeft:"3px solid "+scfg.color+"55",fontSize:11.5}}>
-                            <span style={{color:"#222",fontWeight:500,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</span>
-                            <span style={{color:"#888",whiteSpace:"nowrap",fontSize:10.5}}>Q3: <strong style={{color:"#444"}}>{loeLbl}</strong></span>
-                            <span style={{color:"#888",whiteSpace:"nowrap",fontSize:10.5}}>3Qtr: <strong style={{color:"#444"}}>{totLbl}</strong></span>
-                            {t.notes && <div style={{gridColumn:"1/-1",fontSize:10,color:"#888",marginTop:3,fontStyle:"italic",whiteSpace:"normal"}}>{t.notes}</div>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </>
-            ) : (
-              <div style={{padding:"20px 0",textAlign:"center",color:"#bbb",fontSize:12,fontStyle:"italic"}}>No performer submissions yet.</div>
-            )}
-          </div>
-          <div style={{padding:"12px 18px",borderBottom:"1px solid #eeeff2"}}>
-            <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#888",fontWeight:700,marginBottom:8}}>Confidence weighting</div>
-            <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"5px 10px",fontSize:11}}>
-              {[["✓","Definitely","+1.0","#1E8449"],["~","Possibly — XS / S","+0.8","#27AE60"],["~","Possibly — M","0","#B7950B"],["~","Possibly — L / XL","−0.5","#E67E22"],["✗","No Capacity","−1.0","#C0392B"]].map(function(r, i){
-                return [
-                  <span key={i+"i"} style={{color:r[3],fontWeight:700}}>{r[0]}</span>,
-                  <span key={i+"l"} style={{color:"#555"}}>{r[1]}</span>,
-                  <span key={i+"w"} style={{color:r[3],fontWeight:600,textAlign:"right"}}>{r[2]}</span>
-                ];
-              })}
-            </div>
-          </div>
-          {init.shortDesc && (
-            <div style={{padding:"12px 18px"}}>
-              <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#888",fontWeight:700,marginBottom:6}}>Summary</div>
-              <div style={{fontSize:12,color:"#555",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{renderText(init.shortDesc)}</div>
-            </div>
-          )}
-        </div>
+        {panelContent}
       </div>
     </div>
   );
@@ -2358,7 +2591,7 @@ function CapacityView(props){
        absolute-positioned drill-down can extend past the workspace bounds
        without being clipped. */
   return (
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden",position:"relative"}}>
+    <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden",position:"relative"}}>
       {IS_ADMIN && !bannerDismissed && <CapMismatchBanner mismatches={mismatches} onDismiss={function(){setBannerDismissed(true);}}/>}
 
       <div style={{padding:"12px 24px 8px",background:"#fff",borderBottom:"1px solid #ececec",flexShrink:0}}>
@@ -2502,7 +2735,10 @@ function CapacityView(props){
         </div>
       </div>
 
-      {drillItem && <CapDrillPanel item={drillItem} goalsRef={goalsRef} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap} onClose={function(){setDrill(null);}}/>}
+      {drillItem && (IS_EMBEDDED
+        ? <AouModal onClose={function(){setDrill(null);}}><CapDrillPanel item={drillItem} goalsRef={goalsRef} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap} onClose={function(){setDrill(null);}} embedded={true}/></AouModal>
+        : <CapDrillPanel item={drillItem} goalsRef={goalsRef} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap} onClose={function(){setDrill(null);}}/>
+      )}
 
       <ViewGuide
         open={guideOpen}
@@ -3128,6 +3364,130 @@ function RoadmapBackToTop(){
   );
 }
 
+/* Roadmap drill-down content — extracted so it can be rendered either
+   inline (standalone side panel) or inside <AouModal> (embed mode). */
+function RoadmapDrillContent(props){
+  var expItem = props.expItem;
+  var expMs = props.expMs || [];
+  var showAud = props.showAud;
+  var noCapacityTeams = props.noCapacityTeams;
+  var depGraph = props.depGraph;
+  var allInit = props.allInit;
+  var selectInitiative = props.selectInitiative;
+  if(!expItem) return null;
+  return (
+    <>
+      <IdentityBlock init={expItem} goalsRef={{}} currentView="roadmap" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
+      <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
+        <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+          {showAud && expItem.awardees && Array.isArray(expItem.awardees) && expItem.awardees.map(function(a){
+            var cfg = RM_AWARDEE_CFG[a];
+            return cfg ? <span key={a} style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:cfg.bg,color:cfg.tx}}>{cfg.label}</span> : null;
+          })}
+        </div>
+        {(function(){
+          var teams = noCapacityTeams(expItem.id);
+          if(!teams) return null;
+          return (
+            <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#FDECEA",border:"1px solid #E6B0AA",borderLeft:"3px solid #C0392B"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#922b21",fontWeight:800}}>Capacity Flag ({teams.length})</div>
+                <button onClick={function(){props.onNavigateView("capacity", expItem.id);}} style={{fontSize:10,padding:"3px 8px",border:"1px solid #C0392B",borderRadius:4,background:"#fff",color:"#922b21",cursor:"pointer",fontWeight:600}}>view in Capacity →</button>
+              </div>
+              <div style={{fontSize:11.5,color:"#7B241C",lineHeight:1.5}}>
+                {teams.length === 1 ? "1 team has" : teams.length + " teams have"} flagged "No Capacity Remaining" for this initiative:
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:2,marginTop:6}}>
+                {teams.map(function(t, i){
+                  return <div key={i} style={{fontSize:11,padding:"3px 7px",background:"#fff",border:"1px solid #E6B0AA",borderRadius:4,color:"#7B241C",display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{color:"#C0392B",fontWeight:800}}>✗</span>
+                    <span style={{fontWeight:600,flex:1}}>{t.name}</span>
+                    {t.notes && <span style={{fontSize:10,color:"#888",fontStyle:"italic"}}>{t.notes}</span>}
+                  </div>;
+                })}
+              </div>
+            </div>
+          );
+        })()}
+        {(rmRelatedDepIds(expItem).length > 0 || (depGraph.downstream[expItem.id] && depGraph.downstream[expItem.id].length) || expItem.dependencyType || expItem.requiredBy || expItem.impactIfLate || expItem.mitigationNotes) && (
+          <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#FEF9E7",border:"1px solid #F5E6A8",borderLeft:"3px solid #B7950B"}}>
+            <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#7D6608",fontWeight:800,marginBottom:8}}>Dependency impact</div>
+            <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"5px 10px",fontSize:11.5,color:"#555",marginBottom:8}}>
+              {expItem.dependencyType && <><span style={{color:"#9A6800"}}>Type</span><span>{expItem.dependencyType}</span></>}
+              {expItem.requiredBy && <><span style={{color:"#9A6800"}}>Required by</span><span>{expItem.requiredBy}</span></>}
+              {expItem.impactIfLate && <><span style={{color:"#9A6800"}}>Impact if late</span><span>{expItem.impactIfLate}</span></>}
+              {expItem.mitigationNotes && <><span style={{color:"#9A6800"}}>Mitigation</span><span>{expItem.mitigationNotes}</span></>}
+            </div>
+            {rmRelatedDepIds(expItem).length > 0 && (
+              <div style={{marginTop:7}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#7D6608",marginBottom:4}}>Depends on</div>
+                {rmRelatedDepIds(expItem).map(function(id){
+                  var it = rmInitById(allInit, id);
+                  return <button key={id} onClick={function(){selectInitiative(id);}} style={{display:"block",width:"100%",textAlign:"left",marginBottom:3,padding:"5px 7px",border:"1px solid #F5E6A8",borderRadius:5,background:"#fff",color:"#555",cursor:"pointer",fontSize:11}}><strong>{id}</strong>{it ? " · "+it.name : ""}</button>;
+                })}
+              </div>
+            )}
+            {depGraph.downstream[expItem.id] && depGraph.downstream[expItem.id].length > 0 && (
+              <div style={{marginTop:7}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#1F618D",marginBottom:4}}>Potentially impacted if this slips</div>
+                {depGraph.downstream[expItem.id].map(function(id){
+                  var it = rmInitById(allInit, id);
+                  return <button key={id} onClick={function(){selectInitiative(id);}} style={{display:"block",width:"100%",textAlign:"left",marginBottom:3,padding:"5px 7px",border:"1px solid #C8DCF0",borderRadius:5,background:"#fff",color:"#555",cursor:"pointer",fontSize:11}}><strong>{id}</strong>{it ? " · "+it.name : ""}</button>;
+                })}
+              </div>
+            )}
+          </div>
+        )}
+        {((expItem.risks && expItem.risks.length > 0) || (expItem.deps && expItem.deps.length > 0)) && (
+          <div style={{marginBottom:14}}>
+            {expItem.risks && expItem.risks.length > 0 && (
+              <div style={{marginBottom:6,padding:"9px 11px",borderRadius:6,background:"#FDECEA",borderLeft:"3px solid #C0392B",fontSize:12,color:"#7B241C"}}>
+                <div style={{fontWeight:600,marginBottom:4}}>⚠ Risks ({expItem.risks.length})</div>
+                {expItem.risks.map(function(r, i){return <div key={i}>{r}</div>;})}
+              </div>
+            )}
+            {expItem.deps && expItem.deps.length > 0 && (
+              <div style={{padding:"9px 11px",borderRadius:6,background:"#FEF9E7",borderLeft:"3px solid #B7950B",fontSize:12,color:"#7D6608"}}>
+                <div style={{fontWeight:600,marginBottom:4}}>🔗 Dependencies ({expItem.deps.length})</div>
+                {expItem.deps.map(function(d, i){return <div key={i}>{d}</div>;})}
+              </div>
+            )}
+          </div>
+        )}
+        {expItem.description && (
+          <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
+            <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:6}}>Summary</div>
+            <div style={{fontSize:12,whiteSpace:"pre-wrap",color:"#555"}}>{renderText(expItem.description)}</div>
+          </div>
+        )}
+        <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
+          <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:8}}>Roadmap details</div>
+          <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 10px",fontSize:11,color:"#555"}}>
+            <span style={{color:"#aaa"}}>Audience</span><span>{expItem.type || "—"}</span>
+            <span style={{color:"#aaa"}}>Start</span><span>{rmFmtDate(expItem.start) || "TBD"}</span>
+            <span style={{color:"#aaa"}}>End</span><span>{rmFmtDate(expItem.end) || "TBD"}</span>
+            <span style={{color:"#aaa"}}>Awardees</span><span>{Array.isArray(expItem.awardees) && expItem.awardees.length > 0 ? expItem.awardees.join(", ") : "—"}</span>
+          </div>
+        </div>
+        {expMs.length > 0 && (
+          <div style={{padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
+            <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:8}}>Milestones ({expMs.length})</div>
+            {expMs.map(function(m){return (
+              <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid #f5f5f5"}}>
+                <RmMsIcon icon={m.icon} sz={14} col={RM_MILESTONE_COLOR}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:500,color:"#333"}}>{renderText(m.name)}</div>
+                  <div style={{fontSize:10,color:"#999"}}>{rmFmtDate(m.start || m.end)}</div>
+                </div>
+              </div>
+            );})}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function RoadmapView(props){
   var data = props.data;
   var [items, setItems] = useState([]);
@@ -3398,7 +3758,7 @@ function RoadmapView(props){
      anything, but keeps the pattern consistent with QPE/Capacity for any
      future panels added here. */
   return (
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#fff",position:"relative"}}>
+    <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden",background:"#fff",position:"relative"}}>
       <div style={{padding:"4px 18px",borderBottom:"1px solid #ebebeb",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#fafafa"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:"1 1 auto"}}>
           <span style={{fontSize:11,color:"#aaa",whiteSpace:"nowrap"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
@@ -3532,9 +3892,9 @@ function RoadmapView(props){
         </div>
       )}
 
-      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-          <div style={{display:"flex",flexShrink:0,borderBottom:"2px solid #e0e0e0",background:"#f7f7f7",zIndex:10,position:"sticky",top:0}}>
+      <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",overflow:IS_EMBEDDED?"visible":"hidden"}}>
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden"}}>
+          <div style={{display:"flex",flexShrink:0,borderBottom:"2px solid #e0e0e0",background:"#f7f7f7",zIndex:10,position:"sticky",top:IS_EMBEDDED?"var(--aou-sticky-offset, 0px)":0}}>
             <div style={{width:RM_LABEL_W,minWidth:RM_LABEL_W,flexShrink:0,borderRight:"1px solid #e5e5e5",display:"flex",flexDirection:"column"}}>
               <div style={{height:22,borderBottom:"1px solid #ebebeb"}}/>
               <div style={{height:24,display:"flex",alignItems:"center",padding:"0 14px",fontSize:10,textTransform:"uppercase",letterSpacing:.8,color:"#bbb",fontWeight:600}}>Initiative</div>
@@ -3557,7 +3917,7 @@ function RoadmapView(props){
             </div>
           </div>
 
-          <div style={{flex:1,display:"flex",overflow:"auto",position:"relative"}} onScroll={function(e){var hdr = document.getElementById("rm-col-hdr"); if(hdr) hdr.scrollLeft = e.currentTarget.scrollLeft;}}>
+          <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",overflowX:"auto",overflowY:IS_EMBEDDED?"visible":"auto",position:"relative"}} onScroll={function(e){var hdr = document.getElementById("rm-col-hdr"); if(hdr) hdr.scrollLeft = e.currentTarget.scrollLeft;}}>
             <div style={{width:RM_LABEL_W,minWidth:RM_LABEL_W,flexShrink:0,borderRight:"1px solid #e5e5e5",position:"sticky",left:0,zIndex:8,background:"#fff",alignSelf:"flex-start",minHeight:"100%"}}>
               {groups.map(function(pair){
                 var gKey = pair[0], gItems = pair[1];
@@ -3690,121 +4050,24 @@ function RoadmapView(props){
           </div>
         </div>
 
-        <div data-drilldown-panel="roadmap" style={{width: expItem ? "440px" : "0px",minWidth: expItem ? "440px" : "0px",maxWidth:"42vw",borderLeft: expItem ? "1px solid #ececec" : "none",background:"#fafbfc",overflow:"hidden",transition:"width .2s,min-width .2s",flexShrink:0,display:"flex",flexDirection:"column",position:"relative"}}>
-          {expItem && (
+        {/* Inline side panel — STANDALONE ONLY. In embed mode this is
+            hidden and the drill-down renders as a modal (below). */}
+        <div data-drilldown-panel="roadmap" style={{width: (expItem && !IS_EMBEDDED) ? "440px" : "0px",minWidth: (expItem && !IS_EMBEDDED) ? "440px" : "0px",maxWidth:"42vw",borderLeft: (expItem && !IS_EMBEDDED) ? "1px solid #ececec" : "none",background:"#fafbfc",overflow:"hidden",transition:"width .2s,min-width .2s",flexShrink:0,display:"flex",flexDirection:"column",position:"relative"}}>
+          {expItem && !IS_EMBEDDED && (
             <>
               <button onClick={function(){setExpanded(null);}} style={{position:"absolute",top:14,right:18,border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1,zIndex:10}}>×</button>
-              <IdentityBlock init={expItem} goalsRef={{}} currentView="roadmap" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
-              <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
-                <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
-                  {showAud && expItem.awardees && Array.isArray(expItem.awardees) && expItem.awardees.map(function(a){
-                    var cfg = RM_AWARDEE_CFG[a];
-                    return cfg ? <span key={a} style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:cfg.bg,color:cfg.tx}}>{cfg.label}</span> : null;
-                  })}
-                </div>
-                {(function(){
-                  var teams = noCapacityTeams(expItem.id);
-                  if(!teams) return null;
-                  return (
-                    <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#FDECEA",border:"1px solid #E6B0AA",borderLeft:"3px solid #C0392B"}}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
-                        <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#922b21",fontWeight:800}}>Capacity Flag ({teams.length})</div>
-                        <button onClick={function(){props.onNavigateView("capacity", expItem.id);}} style={{fontSize:10,padding:"3px 8px",border:"1px solid #C0392B",borderRadius:4,background:"#fff",color:"#922b21",cursor:"pointer",fontWeight:600}}>view in Capacity →</button>
-                      </div>
-                      <div style={{fontSize:11.5,color:"#7B241C",lineHeight:1.5}}>
-                        {teams.length === 1 ? "1 team has" : teams.length + " teams have"} flagged "No Capacity Remaining" for this initiative:
-                      </div>
-                      <div style={{display:"flex",flexDirection:"column",gap:2,marginTop:6}}>
-                        {teams.map(function(t, i){
-                          return <div key={i} style={{fontSize:11,padding:"3px 7px",background:"#fff",border:"1px solid #E6B0AA",borderRadius:4,color:"#7B241C",display:"flex",alignItems:"center",gap:6}}>
-                            <span style={{color:"#C0392B",fontWeight:800}}>✗</span>
-                            <span style={{fontWeight:600,flex:1}}>{t.name}</span>
-                            {t.notes && <span style={{fontSize:10,color:"#888",fontStyle:"italic"}}>{t.notes}</span>}
-                          </div>;
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-                {(rmRelatedDepIds(expItem).length > 0 || (depGraph.downstream[expItem.id] && depGraph.downstream[expItem.id].length) || expItem.dependencyType || expItem.requiredBy || expItem.impactIfLate || expItem.mitigationNotes) && (
-                  <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#FEF9E7",border:"1px solid #F5E6A8",borderLeft:"3px solid #B7950B"}}>
-                    <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#7D6608",fontWeight:800,marginBottom:8}}>Dependency impact</div>
-                    <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"5px 10px",fontSize:11.5,color:"#555",marginBottom:8}}>
-                      {expItem.dependencyType && <><span style={{color:"#9A6800"}}>Type</span><span>{expItem.dependencyType}</span></>}
-                      {expItem.requiredBy && <><span style={{color:"#9A6800"}}>Required by</span><span>{expItem.requiredBy}</span></>}
-                      {expItem.impactIfLate && <><span style={{color:"#9A6800"}}>Impact if late</span><span>{expItem.impactIfLate}</span></>}
-                      {expItem.mitigationNotes && <><span style={{color:"#9A6800"}}>Mitigation</span><span>{expItem.mitigationNotes}</span></>}
-                    </div>
-                    {rmRelatedDepIds(expItem).length > 0 && (
-                      <div style={{marginTop:7}}>
-                        <div style={{fontSize:10,fontWeight:800,color:"#7D6608",marginBottom:4}}>Depends on</div>
-                        {rmRelatedDepIds(expItem).map(function(id){
-                          var it = rmInitById(allInit, id);
-                          return <button key={id} onClick={function(){selectInitiative(id);}} style={{display:"block",width:"100%",textAlign:"left",marginBottom:3,padding:"5px 7px",border:"1px solid #F5E6A8",borderRadius:5,background:"#fff",color:"#555",cursor:"pointer",fontSize:11}}><strong>{id}</strong>{it ? " · "+it.name : ""}</button>;
-                        })}
-                      </div>
-                    )}
-                    {depGraph.downstream[expItem.id] && depGraph.downstream[expItem.id].length > 0 && (
-                      <div style={{marginTop:7}}>
-                        <div style={{fontSize:10,fontWeight:800,color:"#1F618D",marginBottom:4}}>Potentially impacted if this slips</div>
-                        {depGraph.downstream[expItem.id].map(function(id){
-                          var it = rmInitById(allInit, id);
-                          return <button key={id} onClick={function(){selectInitiative(id);}} style={{display:"block",width:"100%",textAlign:"left",marginBottom:3,padding:"5px 7px",border:"1px solid #C8DCF0",borderRadius:5,background:"#fff",color:"#555",cursor:"pointer",fontSize:11}}><strong>{id}</strong>{it ? " · "+it.name : ""}</button>;
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {((expItem.risks && expItem.risks.length > 0) || (expItem.deps && expItem.deps.length > 0)) && (
-                  <div style={{marginBottom:14}}>
-                    {expItem.risks && expItem.risks.length > 0 && (
-                      <div style={{marginBottom:6,padding:"9px 11px",borderRadius:6,background:"#FDECEA",borderLeft:"3px solid #C0392B",fontSize:12,color:"#7B241C"}}>
-                        <div style={{fontWeight:600,marginBottom:4}}>⚠ Risks ({expItem.risks.length})</div>
-                        {expItem.risks.map(function(r, i){return <div key={i}>{r}</div>;})}
-                      </div>
-                    )}
-                    {expItem.deps && expItem.deps.length > 0 && (
-                      <div style={{padding:"9px 11px",borderRadius:6,background:"#FEF9E7",borderLeft:"3px solid #B7950B",fontSize:12,color:"#7D6608"}}>
-                        <div style={{fontWeight:600,marginBottom:4}}>🔗 Dependencies ({expItem.deps.length})</div>
-                        {expItem.deps.map(function(d, i){return <div key={i}>{d}</div>;})}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {expItem.description && (
-                  <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
-                    <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:6}}>Summary</div>
-                    <div style={{fontSize:12,whiteSpace:"pre-wrap",color:"#555"}}>{renderText(expItem.description)}</div>
-                  </div>
-                )}
-                <div style={{marginBottom:10,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
-                  <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:8}}>Roadmap details</div>
-                  <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 10px",fontSize:11,color:"#555"}}>
-                    <span style={{color:"#aaa"}}>Audience</span><span>{expItem.type || "—"}</span>
-                    <span style={{color:"#aaa"}}>Start</span><span>{rmFmtDate(expItem.start) || "TBD"}</span>
-                    <span style={{color:"#aaa"}}>End</span><span>{rmFmtDate(expItem.end) || "TBD"}</span>
-                    <span style={{color:"#aaa"}}>Awardees</span><span>{Array.isArray(expItem.awardees) && expItem.awardees.length > 0 ? expItem.awardees.join(", ") : "—"}</span>
-                  </div>
-                </div>
-                {expMs.length > 0 && (
-                  <div style={{padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
-                    <div style={{fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,marginBottom:8}}>Milestones ({expMs.length})</div>
-                    {expMs.map(function(m){return (
-                      <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid #f5f5f5"}}>
-                        <RmMsIcon icon={m.icon} sz={14} col={RM_MILESTONE_COLOR}/>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:11,fontWeight:500,color:"#333"}}>{renderText(m.name)}</div>
-                          <div style={{fontSize:10,color:"#999"}}>{rmFmtDate(m.start || m.end)}</div>
-                        </div>
-                      </div>
-                    );})}
-                  </div>
-                )}
-              </div>
+              <RoadmapDrillContent expItem={expItem} expMs={expMs} showAud={showAud} noCapacityTeams={noCapacityTeams} depGraph={depGraph} allInit={allInit} selectInitiative={selectInitiative} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
             </>
           )}
         </div>
       </div>
+
+      {/* Modal drill-down — EMBED MODE ONLY */}
+      {expItem && IS_EMBEDDED && (
+        <AouModal onClose={function(){setExpanded(null);}}>
+          <RoadmapDrillContent expItem={expItem} expMs={expMs} showAud={showAud} noCapacityTeams={noCapacityTeams} depGraph={depGraph} allInit={allInit} selectInitiative={selectInitiative} onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap} embedded={true}/>
+        </AouModal>
+      )}
 
       {tooltip && (
         <div style={{position:"fixed",left:tooltip.x+12,top:tooltip.y-10,zIndex:2000,background:"#1a1a2e",color:"#fff",padding:"8px 12px",borderRadius:8,fontSize:11,pointerEvents:"none",boxShadow:"0 4px 12px rgba(0,0,0,.25)",maxWidth:240}}>
@@ -3813,7 +4076,8 @@ function RoadmapView(props){
         </div>
       )}
 
-      <RoadmapBackToTop/>
+            {/* RoadmapBackToTop removed — superseded by AouBackToTop in App shell,
+          which now covers all views in embed mode. */}
 
       <ViewGuide
         open={guideOpen}
@@ -3862,6 +4126,7 @@ function App(){
   var [selectedInitiativeId, setSelectedInitiativeId] = useState(null);
   var [driftDismissed, setDriftDismissed] = useState(false);
   var data = useDataLoader();
+  useStickyOffset();
 
   var psiUrlMap = useMemo(function(){
     if(data.state.status !== "ready") return {};
@@ -3894,53 +4159,57 @@ function App(){
   };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{padding:"10px 18px",background:"#fff",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:10}}>
-        <div style={{minWidth:0}}>
-          <div style={{fontSize:10.5,textTransform:"uppercase",letterSpacing:1.4,color:"#888",fontWeight:600,marginBottom:4}}>
-            NIH · <AoU/> Research Program · {CYCLE.current}
+    <div className="aou-app-shell" style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div className="aou-sticky-shell">
+        <div style={{padding:"10px 18px",background:"#fff",borderBottom:"1px solid #ececec",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:10}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:10.5,textTransform:"uppercase",letterSpacing:1.4,color:"#888",fontWeight:600,marginBottom:4}}>
+              NIH · <AoU/> Research Program · {CYCLE.current}
+            </div>
+            <div style={{fontSize:18,fontWeight:700,color:"#111",lineHeight:1.2,letterSpacing:-0.2}}>
+              {IS_ROADMAP_ONLY ? "Program Roadmap" : "Program Dashboards"}
+            </div>
           </div>
-          <div style={{fontSize:18,fontWeight:700,color:"#111",lineHeight:1.2,letterSpacing:-0.2}}>
-            {IS_ROADMAP_ONLY ? "Program Roadmap" : "Program Dashboards"}
+          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}}>
+            {data.state.status === "ready" && (
+              <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#EAF7EF",color:"#1E8449",fontWeight:600}}>
+                ● live · {data.state.loadedAt.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}
+              </span>
+            )}
+            {data.state.status === "loading" && (
+              <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#EBF5FB",color:"#2471A3",fontWeight:600}}>↻ loading…</span>
+            )}
+            {data.state.status === "error" && (
+              <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#FDECEA",color:"#C0392B",fontWeight:600}} title={data.state.error}>● load failed</span>
+            )}
+            <button onClick={data.reload} title="Refresh all data" style={{fontSize:11.5,padding:"6px 12px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>
+              ↻ Refresh
+            </button>
           </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}}>
-          {data.state.status === "ready" && (
-            <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#EAF7EF",color:"#1E8449",fontWeight:600}}>
-              ● live · {data.state.loadedAt.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}
-            </span>
-          )}
-          {data.state.status === "loading" && (
-            <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#EBF5FB",color:"#2471A3",fontWeight:600}}>↻ loading…</span>
-          )}
-          {data.state.status === "error" && (
-            <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#FDECEA",color:"#C0392B",fontWeight:600}} title={data.state.error}>● load failed</span>
-          )}
-          <button onClick={data.reload} title="Refresh all data" style={{fontSize:11.5,padding:"6px 12px",border:"1px solid #C8DCF0",borderRadius:6,background:"#EBF5FB",color:"#2471A3",cursor:"pointer",fontWeight:500}}>
-            ↻ Refresh
-          </button>
-        </div>
+
+        {IS_ADMIN && !driftDismissed && <CycleDriftBanner drift={cycleDrift} onDismiss={function(){setDriftDismissed(true);}}/>}
+
+        {!IS_ROADMAP_ONLY && (
+          <div className="tab-bar">
+            <button className={"tab"+(activeView==="qpe"?" active":"")} onClick={function(){handleTabClick("qpe");}}>
+              Quarterly Planning
+            </button>
+            <button className={"tab"+(activeView==="roadmap"?" active":"")} onClick={function(){handleTabClick("roadmap");}}>
+              Roadmap
+            </button>
+            <button className={"tab"+(activeView==="capacity"?" active":"")} onClick={function(){handleTabClick("capacity");}}>
+              Capacity Planning
+            </button>
+          </div>
+        )}
       </div>
-
-      {IS_ADMIN && !driftDismissed && <CycleDriftBanner drift={cycleDrift} onDismiss={function(){setDriftDismissed(true);}}/>}
-
-      {!IS_ROADMAP_ONLY && (
-        <div className="tab-bar">
-          <button className={"tab"+(activeView==="qpe"?" active":"")} onClick={function(){handleTabClick("qpe");}}>
-            Quarterly Planning
-          </button>
-          <button className={"tab"+(activeView==="roadmap"?" active":"")} onClick={function(){handleTabClick("roadmap");}}>
-            Roadmap
-          </button>
-          <button className={"tab"+(activeView==="capacity"?" active":"")} onClick={function(){handleTabClick("capacity");}}>
-            Capacity Planning
-          </button>
-        </div>
-      )}
 
       {activeView === "qpe"      && <QpeView {...viewProps}/>}
       {activeView === "roadmap"  && <RoadmapView {...viewProps}/>}
       {activeView === "capacity" && <CapacityView {...viewProps}/>}
+
+      <AouBackToTop/>
     </div>
   );
 }
