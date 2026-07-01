@@ -26,11 +26,14 @@ button,select,input{font-family:inherit;}
 /* EMBED MODE STYLES — activated when the <body> has class "aou-embedded".
    When embedded in Google Sites, the dashboard flows as one long page
    with a sticky header + tab bar, rather than filling a captive viewport
-   with internal scroll containers. */
-body.aou-embedded #root{min-height:0;height:auto;display:block;}
-body.aou-embedded .aou-app-shell{height:auto;display:block;}
+   with internal scroll containers.
+   Note: display properties are preserved (not forced to block) so nested
+   flex layouts like the Roadmap timeline continue to work correctly.
+   We only neutralize the constraining properties (overflow, height, flex). */
+body.aou-embedded #root{min-height:0;height:auto;}
+body.aou-embedded .aou-app-shell{height:auto;}
 body.aou-embedded .aou-sticky-shell{position:sticky;top:0;z-index:50;background:#fff;box-shadow:0 1px 0 #ececec, 0 2px 4px rgba(0,0,0,.04);}
-body.aou-embedded .aou-view-container{flex:none;overflow:visible;height:auto;display:block;}
+body.aou-embedded .aou-view-container{flex:none;overflow:visible;height:auto;}
 body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 
 /* EMBED MODE: modal backdrop for drill-downs. Centered on browser viewport,
@@ -1657,7 +1660,7 @@ function QpeView(props){
      keeping it in the user's scroll context. In standalone, this has
      no effect because drill-downs use position:fixed. */
   return (
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative"}}>
+    <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden",position:"relative"}}>
       <div style={{padding:"10px 24px",background:"#fff",borderBottom:"1px solid #ececec",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
         <span style={{fontSize:10,textTransform:"uppercase",color:"#aaa",fontWeight:700,letterSpacing:.05,marginRight:2}}>Focus</span>
         <select value={goalFocus} onChange={function(e){setGoalFocus(e.target.value);}} style={{fontSize:11.5,padding:"5px 10px",border:"1px solid "+(goalFocus !== "all" ? "#2471A3" : "#dcdcdc"),borderRadius:18,background:goalFocus !== "all" ? "#EBF5FB" : "#fff",color:goalFocus !== "all" ? "#2471A3" : "#555",fontWeight:goalFocus !== "all" ? 600 : 400}}>
@@ -2278,7 +2281,7 @@ function CapDrillPanel(props){
         <button onClick={props.onClose} style={{position:"absolute",top:14,right:18,border:"none",background:"none",fontSize:22,color:"#bbb",cursor:"pointer",padding:0,lineHeight:1,zIndex:10}}>×</button>
       )}
       <IdentityBlock init={init} goalsRef={goalsRef} currentView="capacity" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
-      <div style={{flex:1,overflowY:props.embedded?"visible":"auto"}}>
+      <div style={{flex:1,overflowY:"auto"}}>
         <div title={CAP_CI_METHODOLOGY} style={{padding:"14px 18px",borderBottom:"1px solid #eeeff2",background:cs.bg}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <div>
@@ -2568,7 +2571,7 @@ function CapacityView(props){
        absolute-positioned drill-down can extend past the workspace bounds
        without being clipped. */
   return (
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden",position:"relative"}}>
+    <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden",position:"relative"}}>
       {IS_ADMIN && !bannerDismissed && <CapMismatchBanner mismatches={mismatches} onDismiss={function(){setBannerDismissed(true);}}/>}
 
       <div style={{padding:"12px 24px 8px",background:"#fff",borderBottom:"1px solid #ececec",flexShrink:0}}>
@@ -3355,7 +3358,7 @@ function RoadmapDrillContent(props){
   return (
     <>
       <IdentityBlock init={expItem} goalsRef={{}} currentView="roadmap" onNavigateView={props.onNavigateView} psiUrlMap={props.psiUrlMap}/>
-      <div style={{flex:1,overflowY:props.embedded?"visible":"auto",padding:"14px 20px"}}>
+      <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
         <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
           {showAud && expItem.awardees && Array.isArray(expItem.awardees) && expItem.awardees.map(function(a){
             var cfg = RM_AWARDEE_CFG[a];
@@ -3735,7 +3738,7 @@ function RoadmapView(props){
      anything, but keeps the pattern consistent with QPE/Capacity for any
      future panels added here. */
   return (
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#fff",position:"relative"}}>
+    <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden",background:"#fff",position:"relative"}}>
       <div style={{padding:"4px 18px",borderBottom:"1px solid #ebebeb",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#fafafa"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:"1 1 auto"}}>
           <span style={{fontSize:11,color:"#aaa",whiteSpace:"nowrap"}}>{RM_TODAY.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
@@ -3869,8 +3872,8 @@ function RoadmapView(props){
         </div>
       )}
 
-      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",overflow:IS_EMBEDDED?"visible":"hidden"}}>
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden"}}>
           <div style={{display:"flex",flexShrink:0,borderBottom:"2px solid #e0e0e0",background:"#f7f7f7",zIndex:10,position:"sticky",top:IS_EMBEDDED?"var(--aou-sticky-offset, 0px)":0}}>
             <div style={{width:RM_LABEL_W,minWidth:RM_LABEL_W,flexShrink:0,borderRight:"1px solid #e5e5e5",display:"flex",flexDirection:"column"}}>
               <div style={{height:22,borderBottom:"1px solid #ebebeb"}}/>
@@ -3894,7 +3897,7 @@ function RoadmapView(props){
             </div>
           </div>
 
-          <div style={{flex:1,display:"flex",overflow:"auto",position:"relative"}} onScroll={function(e){var hdr = document.getElementById("rm-col-hdr"); if(hdr) hdr.scrollLeft = e.currentTarget.scrollLeft;}}>
+          <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",overflowX:"auto",overflowY:IS_EMBEDDED?"visible":"auto",position:"relative"}} onScroll={function(e){var hdr = document.getElementById("rm-col-hdr"); if(hdr) hdr.scrollLeft = e.currentTarget.scrollLeft;}}>
             <div style={{width:RM_LABEL_W,minWidth:RM_LABEL_W,flexShrink:0,borderRight:"1px solid #e5e5e5",position:"sticky",left:0,zIndex:8,background:"#fff",alignSelf:"flex-start",minHeight:"100%"}}>
               {groups.map(function(pair){
                 var gKey = pair[0], gItems = pair[1];
