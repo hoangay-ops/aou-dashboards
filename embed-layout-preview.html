@@ -77,6 +77,7 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 .aou-modal-panel .aou-modal-close:hover{color:#555;}
 .aou-modal-panel .aou-modal-inner{
   overflow-y:auto;
+  overscroll-behavior:contain;
   flex:1;
   display:flex;
   flex-direction:column;
@@ -813,12 +814,31 @@ function HelpButton(props){
 /* EMBED MODE: Modal wrapper for drill-down panels. Renders a centered
    overlay on the browser viewport with a dimmed backdrop. Closes on
    backdrop click, Escape key, or X button. Only used when IS_EMBEDDED.
-   In standalone mode, drill-downs render inline (their original behavior). */
+   In standalone mode, drill-downs render inline (their original behavior).
+   Locks body scroll while mounted so the page underneath the dimmed
+   backdrop doesn't scroll. `overscroll-behavior:contain` on the inner
+   scroll region prevents scroll chaining when the user scrolls past
+   the top or bottom of the modal content. */
 function AouModal(props){
   useEffect(function(){
     function esc(e){ if(e.key === "Escape" && props.onClose) props.onClose(); }
     document.addEventListener("keydown", esc);
-    return function(){ document.removeEventListener("keydown", esc); };
+    // Lock body scroll while modal is open. Preserve the current
+    // scroll position so we can restore it on close (some browsers
+    // reset scroll to top when overflow:hidden is applied to body).
+    var prevOverflow = document.body.style.overflow;
+    var prevPaddingRight = document.body.style.paddingRight;
+    var scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    // Compensate for the disappearing scrollbar so layout doesn't jump.
+    if(scrollbarWidth > 0){
+      document.body.style.paddingRight = scrollbarWidth + "px";
+    }
+    return function(){
+      document.removeEventListener("keydown", esc);
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+    };
   }, [props.onClose]);
   return (
     <div className="aou-modal-backdrop" onClick={function(e){
