@@ -3894,7 +3894,7 @@ function RoadmapView(props){
 
       <div style={{flex:IS_EMBEDDED?"none":1,display:"flex",overflow:IS_EMBEDDED?"visible":"hidden"}}>
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:IS_EMBEDDED?"visible":"hidden"}}>
-          <div style={{display:"flex",flexShrink:0,borderBottom:"2px solid #e0e0e0",background:"#f7f7f7",zIndex:10,position:"sticky",top:IS_EMBEDDED?"var(--aou-sticky-offset, 0px)":0}}>
+          <div style={{display:"flex",flexShrink:0,borderBottom:"2px solid #e0e0e0",background:"#f7f7f7",zIndex:15,position:"sticky",top:IS_EMBEDDED?"var(--aou-sticky-offset, 0px)":0}}>
             <div style={{width:RM_LABEL_W,minWidth:RM_LABEL_W,flexShrink:0,borderRight:"1px solid #e5e5e5",display:"flex",flexDirection:"column"}}>
               <div style={{height:22,borderBottom:"1px solid #ebebeb"}}/>
               <div style={{height:24,display:"flex",alignItems:"center",padding:"0 14px",fontSize:10,textTransform:"uppercase",letterSpacing:.8,color:"#bbb",fontWeight:600}}>Initiative</div>
@@ -3904,13 +3904,13 @@ function RoadmapView(props){
                 <div style={{display:"grid",gridTemplateColumns:"repeat("+cols.length+",1fr)",height:22,borderBottom:"1px solid #ebebeb"}}>
                   {quarters.map(function(q){
                     var isNowQ = cols.slice(q.start, q.start+q.count).some(function(c){return RM_TODAY >= c.start && RM_TODAY <= c.end;});
-                    return <div key={q.q} style={{gridColumn:"span "+q.count,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:isNowQ ? "#2471A3" : "#999",background:isNowQ ? "#EBF5FB" : "transparent",borderRight:"1px solid #e0e0e0"}}>{q.q}</div>;
+                    return <div key={q.q} style={{gridColumn:"span "+q.count,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:isNowQ ? "#2471A3" : "#999",background:isNowQ ? "#EBF5FB" : "#f7f7f7",borderRight:"1px solid #e0e0e0"}}>{q.q}</div>;
                   })}
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat("+cols.length+",1fr)",height:24}}>
                   {cols.map(function(c, i){
                     var now = RM_TODAY >= c.start && RM_TODAY <= c.end;
-                    return <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:now ? 600 : 400,color:now ? "#2471A3" : "#bbb",background:now ? "#EBF5FB" : "transparent",borderRight:i < cols.length-1 ? "1px solid #e8e8e8" : "none"}}>{c.label}</div>;
+                    return <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:now ? 600 : 400,color:now ? "#2471A3" : "#bbb",background:now ? "#EBF5FB" : "#f7f7f7",borderRight:i < cols.length-1 ? "1px solid #e8e8e8" : "none"}}>{c.label}</div>;
                   })}
                 </div>
               </div>
