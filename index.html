@@ -391,7 +391,11 @@ const IS_ROADMAP_ONLY = (function(){
    gets cut off in iframe) to position:absolute (relative to their view
    container, which now has position:relative). */
 const IS_EMBEDDED = (function(){
-  try { return window.self !== window.top; } catch(e){ return true; }
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const view = params.get("view") || "";
+    return window.self !== window.top || view === "roadmap-only";
+  } catch(e){ return true; }
 })();
 
 /* Tag the body so embed-mode CSS rules apply (see .aou-embedded rules in
