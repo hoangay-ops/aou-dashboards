@@ -1153,10 +1153,41 @@ function qpeRankAliasesForQuarter(quarterLabel) {
     return [
         "New Q" + qp.q + " '" + qp.shortYear + " Rank",
         "New Q" + qp.q + " ’" + qp.shortYear + " Rank",
+        "New Q" + qp.q + " " + qp.year + " Rank",
         "Q" + qp.q + " '" + qp.shortYear + " Rank",
         "Q" + qp.q + " ’" + qp.shortYear + " Rank",
-        "Q" + qp.q + " " + qp.year + " Rank"
+        "Q" + qp.q + " " + qp.year + " Rank",
+        "Q" + qp.q + " Rank",
+        "CEO Q" + qp.q + " '" + qp.shortYear + " Rank",
+        "CEO Q" + qp.q + " " + qp.year + " Rank",
+        "CEO Rank",
+        "Rank"
     ];
+}
+function qpeValueForQuarterRank(headerRow, row, quarterLabel, fallbackAccessor, aliases) {
+    aliases = aliases || [];
+    if (fallbackAccessor && aliases.length) {
+        var byAlias = fallbackAccessor.apply(null, [row].concat(aliases));
+        if (byAlias)
+            return byAlias;
+    }
+    var qp = qpeQuarterParts(quarterLabel);
+    if (!qp || !headerRow || !row)
+        return "";
+    for (var i = 0; i < headerRow.length; i++) {
+        var h = normHeader(headerRow[i]).replace(/[’]/g, "'");
+        var hasRank = h.indexOf("rank") !== -1;
+        if (!hasRank)
+            continue;
+        var hasQuarter = h.indexOf("q" + qp.q) !== -1;
+        var hasYear = h.indexOf(String(qp.year)) !== -1 || h.indexOf("'" + qp.shortYear) !== -1 || h.indexOf(" " + qp.shortYear) !== -1;
+        if (hasQuarter && hasYear) {
+            var v = row[i];
+            if (v != null && String(v).trim() !== "")
+                return String(v).trim();
+        }
+    }
+    return "";
 }
 function qpeSetHistoryEntry(map, id, quarter, raw, rank) {
     if (!id || (!raw && rank == null))
@@ -1185,12 +1216,15 @@ function qpeBuildPlanningHistoryMap(csvText) {
         var id = get(row, "ID");
         if (!id)
             return;
-        var prevRank = qpeParseRank(get.apply(null, [row].concat(qpeRankAliasesForQuarter(CYCLE.previous))));
+        var currentRank = qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current)));
+        var currentRaw = qpeValueForQuarterStatus(header, row, CYCLE.current, get, qpeHistoryAliasesForQuarter(CYCLE.current));
+        qpeSetHistoryEntry(map, id, CYCLE.current, currentRaw, currentRank);
+        var prevRank = qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.previous, get, qpeRankAliasesForQuarter(CYCLE.previous)));
         var prevRaw = qpeValueForQuarterStatus(header, row, CYCLE.previous, get, qpeHistoryAliasesForQuarter(CYCLE.previous));
         if (!prevRaw)
             prevRaw = get(row, "Status", "Planning Status", "Current Status");
         qpeSetHistoryEntry(map, id, CYCLE.previous, prevRaw, prevRank);
-        var baseRank = qpeParseRank(get.apply(null, [row].concat(qpeRankAliasesForQuarter(CYCLE.baseline))));
+        var baseRank = qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.baseline, get, qpeRankAliasesForQuarter(CYCLE.baseline)));
         var baseRaw = qpeValueForQuarterStatus(header, row, CYCLE.baseline, get, [
             "Previous Status (" + CYCLE.baselineShort + ")",
             "Previous Status (" + CYCLE.baseline + ")",
@@ -1209,6 +1243,15 @@ function qpeDisplayStatusRaw(raw) {
     return s || String(raw || "").trim();
 }
 const QPE_DEFAULT_HIDDEN_STATUSES = ["Complete", "Backlogged"];
+function qpePrimaryRank(init) {
+    if (!init)
+        return null;
+    if (init.q3Rank != null)
+        return init.q3Rank;
+    if (init.q2Rank != null)
+        return init.q2Rank;
+    return null;
+}
 function compareInitiativeIds(a, b) {
     var ap = String((a && a.id) || a || "").split(".").map(Number);
     var bp = String((b && b.id) || b || "").split(".").map(Number);
@@ -1229,13 +1272,14 @@ function qpeMatchesUserFilters(init, filters) {
         return false;
     if (filters.newOnly && !init.isNew)
         return false;
-    if (filters.rankFilter === "ranked" && init.q3Rank == null)
+    var rank = qpePrimaryRank(init);
+    if (filters.rankFilter === "ranked" && rank == null)
         return false;
-    if (filters.rankFilter === "unranked" && init.q3Rank != null)
+    if (filters.rankFilter === "unranked" && rank != null)
         return false;
-    if (filters.rankFilter === "top10" && (init.q3Rank == null || init.q3Rank > 10))
+    if (filters.rankFilter === "top10" && (rank == null || rank > 10))
         return false;
-    if (filters.rankFilter === "top20" && (init.q3Rank == null || init.q3Rank > 20))
+    if (filters.rankFilter === "top20" && (rank == null || rank > 20))
         return false;
     if (filters.search) {
         var q = String(filters.search || "").toLowerCase();
@@ -1254,15 +1298,15 @@ function qpeVisibleInDefaultList(init, filters) {
 function qpeCompareItems(a, b, sortMode) {
     sortMode = sortMode || "id";
     if (sortMode === "rank-asc") {
-        var ar = a.q3Rank == null ? 999999 : a.q3Rank;
-        var br = b.q3Rank == null ? 999999 : b.q3Rank;
+        var ar = qpePrimaryRank(a) == null ? 999999 : qpePrimaryRank(a);
+        var br = qpePrimaryRank(b) == null ? 999999 : qpePrimaryRank(b);
         if (ar !== br)
             return ar - br;
         return compareInitiativeIds(a, b);
     }
     if (sortMode === "rank-desc") {
-        var ar2 = a.q3Rank == null ? -1 : a.q3Rank;
-        var br2 = b.q3Rank == null ? -1 : b.q3Rank;
+        var ar2 = qpePrimaryRank(a) == null ? -1 : qpePrimaryRank(a);
+        var br2 = qpePrimaryRank(b) == null ? -1 : qpePrimaryRank(b);
         if (ar2 !== br2)
             return br2 - ar2;
         return compareInitiativeIds(a, b);
@@ -1322,11 +1366,15 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
             "Previous Status"
         ].concat(qpeHistoryAliasesForQuarter(CYCLE.baseline)));
         var priorHistory = previousHistoryMap[id] || {};
+        var priorCurrent = priorHistory[CYCLE.current] || null;
         var priorPrevious = priorHistory[CYCLE.previous] || null;
         var priorBaseline = priorHistory[CYCLE.baseline] || null;
-        var q2rCurrent = qpeParseRank(get.apply(null, [row].concat(qpeRankAliasesForQuarter(CYCLE.previous))));
+        var q2rCurrent = qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.previous, get, qpeRankAliasesForQuarter(CYCLE.previous)));
         var q2r = q2rCurrent != null ? q2rCurrent : (priorPrevious && priorPrevious.rank != null ? priorPrevious.rank : null);
-        var q3r = qpeParseRank(get.apply(null, [row].concat(qpeRankAliasesForQuarter(CYCLE.current))));
+        var q3rCurrent = qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current)));
+        var q3r = q3rCurrent != null ? q3rCurrent : (priorCurrent && priorCurrent.rank != null ? priorCurrent.rank : null);
+        if (!q3sRaw && priorCurrent)
+            q3sRaw = priorCurrent.raw || "";
         if (!q2sRaw && priorPrevious)
             q2sRaw = priorPrevious.raw || "";
         if (!prevRaw && priorBaseline)
@@ -1760,7 +1808,7 @@ function QpeListPanel(props) {
                             React.createElement("span", { style: { width: 7, height: 7, borderRadius: "50%", background: sc ? sc.dot : "#ccc", flexShrink: 0 } }),
                             React.createElement("span", { style: { fontFamily: "monospace", fontSize: 10, color: "#aaa", flexShrink: 0 } }, i.id),
                             React.createElement("span", { style: { fontSize: 12, color: "#333", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, title: i.name }, i.name),
-                            i.q3Rank != null && React.createElement(QpeRankChip, { rank: i.q3Rank, size: 8.5 }),
+                            qpePrimaryRank(i) != null && React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 8.5 }),
                             i.isNew && React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 8.5 }, "NEW")));
                     }))));
             });
@@ -1783,7 +1831,7 @@ function QpeInitCard(props) {
                 "G",
                 g.num),
             React.createElement("span", { style: { fontFamily: "monospace", fontSize: 9.5, color: "#aaa" } }, i.id),
-            i.q3Rank != null && React.createElement(QpeRankChip, { rank: i.q3Rank, size: 9 }),
+            qpePrimaryRank(i) != null && React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 9 }),
             i.isNew && React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 9 }, "NEW"),
             props.revivedFlag && !i.isNew && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 9 }, "REVIVED")),
         React.createElement("div", { style: { fontSize: 12.5, fontWeight: 600, color: "#222", lineHeight: 1.35 } }, i.name),
@@ -1880,89 +1928,37 @@ function QpeMainView(props) {
                     React.createElement("div", { style: { fontSize: 9.5, color: "#6C3483", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Concept"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#6C3483", lineHeight: 1.1, marginTop: 3 } }, activeSummary.concept.length),
                     React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "exploratory"))))),
-        React.createElement("section", { style: { marginBottom: 24 } },
-            React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch" } },
-                React.createElement("div", { style: { display: "flex", gap: 8, flex: "1 1 320px", minWidth: 280 } },
-                    React.createElement("div", { style: { padding: "10px 12px", display: (cycleStory.completed.length > 0 || cycleStory.backlogged.length > 0) ? "flex" : "none", flexDirection: "column", gap: 4, flex: "0 1 160px", background: "#fafbfc", border: "1px solid #ececec", borderRadius: 10 } },
-                        React.createElement("div", { style: { fontSize: 9, textTransform: "uppercase", letterSpacing: .5, color: "#999", fontWeight: 600, display: "flex", alignItems: "center" } },
-                            React.createElement("span", { style: { fontSize: 14, fontWeight: 600, lineHeight: 1, marginRight: 4, color: "#999" } }, "\u2190"),
-                            "Outcomes from last cycle"),
-                        React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 4 } },
-                            React.createElement("div", null,
-                                React.createElement("div", { style: { fontSize: 9.5, color: "#999" } }, "Completed"),
-                                React.createElement("div", { style: { fontSize: 16, fontWeight: 700, color: "#1E8449", lineHeight: 1.1 } }, cycleStory.completed.length)),
-                            React.createElement("div", null,
-                                React.createElement("div", { style: { fontSize: 9.5, color: "#999" } }, "Backlogged"),
-                                React.createElement("div", { style: { fontSize: 16, fontWeight: 700, color: STATUS_CFG.Backlogged.tx, lineHeight: 1.1 } }, cycleStory.backlogged.length))),
-                        React.createElement("div", { style: { fontSize: 9.5, color: "#aaa", marginTop: "auto", paddingTop: 4 } },
-                            "of ",
-                            cycleStory.lastCommittedTotal,
-                            " committed")),
-                    React.createElement("div", { style: { padding: "10px 14px 12px", display: "flex", flexDirection: "column", gap: 6, flex: "1 1 200px", background: "#fff", border: "1px solid #ececec", borderRadius: 10 } },
-                        React.createElement("div", { onClick: function () { props.onListDrill({ label: "In " + CYCLE.current + " planning", items: cycleStory.ongoing.concat(cycleStory.newProposed).concat(cycleStory.revived), sublabel: cycleStory.ongoing.length + " ongoing + " + cycleStory.newProposed.length + " new" + (cycleStory.revived.length ? " + " + cycleStory.revived.length + " revived" : ""), accent: "#666" }); }, style: { cursor: "pointer", margin: "-4px -6px", padding: "4px 6px", borderRadius: 5 } },
-                            React.createElement("div", { style: { fontSize: 9.5, textTransform: "uppercase", letterSpacing: .5, color: "#2471A3", fontWeight: 600, display: "flex", alignItems: "center" } },
-                                React.createElement("span", { style: { fontSize: 14, fontWeight: 600, lineHeight: 1, marginRight: 4, color: "#2471A3" } }, "\u2192"),
-                                "Candidates for this cycle"),
-                            React.createElement("div", { style: { fontSize: 24, fontWeight: 700, lineHeight: 1.1, marginTop: 2, color: "#111" } }, cycleStory.ongoing.length + cycleStory.newProposed.length + cycleStory.revived.length),
-                            React.createElement("div", { style: { fontSize: 10, color: "#666", marginTop: 1 } },
-                                cycleStory.ongoing.length,
-                                " ongoing + ",
-                                cycleStory.newProposed.length,
-                                " new",
-                                cycleStory.revived.length ? " + " + cycleStory.revived.length + " revived" : "")),
-                        React.createElement("div", { style: { marginTop: 2 } },
-                            React.createElement("div", { style: { display: "flex", height: 16, borderRadius: 3, overflow: "hidden", border: "1px solid #ececec" } }, [{ k: "Ongoing", n: cycleStory.ongoing.length, color: STATUS_CFG.Proposed.dot }, { k: "New", n: cycleStory.newProposed.length, color: "#F4D03F" }, { k: "Revived", n: cycleStory.revived.length, color: "#6C3483" }].map(function (seg) {
-                                if (seg.n === 0)
-                                    return null;
-                                return React.createElement("div", { key: seg.k, style: { flexGrow: seg.n, background: seg.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, color: "#fff", fontWeight: 600 } }, seg.n);
-                            })),
-                            React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 4, fontSize: 9.5, color: "#666", flexWrap: "wrap" } }, [{ k: "Ongoing", n: cycleStory.ongoing.length, color: STATUS_CFG.Proposed.dot }, { k: "New", n: cycleStory.newProposed.length, color: "#F4D03F" }, { k: "Revived", n: cycleStory.revived.length, color: "#6C3483" }].map(function (seg) {
-                                if (seg.n === 0)
-                                    return null;
-                                return React.createElement("span", { key: seg.k, style: { display: "inline-flex", alignItems: "center", gap: 3 } },
-                                    React.createElement("span", { style: { width: 6, height: 6, borderRadius: 2, background: seg.color } }),
-                                    seg.k);
-                            }))))),
-                React.createElement("div", { style: { display: "flex", gap: 6, flex: "2 1 540px", flexWrap: "wrap", alignItems: "stretch" } },
-                    [
-                        { label: "✓ Completed", items: cycleStory.completed, sublabel: "of " + cycleStory.lastCommittedTotal + " committed last cycle", accent: "#117A65", count: cycleStory.completed.length, color: "#117A65", bg: "#fafbfc", suffix: "last cycle" },
-                        { label: "↓ Backlogged", items: cycleStory.backlogged, sublabel: "of " + cycleStory.lastCommittedTotal + " committed last cycle", accent: "#7D6608", count: cycleStory.backlogged.length, color: "#7D6608", bg: "#fafbfc", suffix: "last cycle" },
-                    ].map(function (t) {
-                        if (t.count === 0)
-                            return null;
-                        return (React.createElement("div", { key: t.label, onClick: function () { props.onListDrill({ label: t.label, items: t.items, sublabel: t.sublabel, accent: t.accent }); }, style: { padding: "8px 12px", flex: "1 1 110px", display: "flex", flexDirection: "column", gap: 1, justifyContent: "center", cursor: "pointer", background: t.bg, border: "1px solid #ececec", borderRadius: 10 } },
-                            React.createElement("div", { style: { fontSize: 9, textTransform: "uppercase", letterSpacing: .4, color: "#999", fontWeight: 600 } }, t.label),
-                            React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: t.color, lineHeight: 1.1 } }, t.count),
-                            React.createElement("div", { style: { fontSize: 9.5, color: "#aaa" } }, t.suffix)));
-                    }),
-                    (cycleStory.completed.length > 0 || cycleStory.backlogged.length > 0) && React.createElement("div", { style: { width: 1, background: "#ddd", margin: "4px 4px", flexShrink: 0 } }),
-                    [
-                        { label: "↻ Ongoing", items: cycleStory.ongoing, sublabel: "carried forward from last cycle", accent: "#7D6608", count: cycleStory.ongoing.length, color: "#7D6608", bg: "#fff", bdr: "#ececec", suffix: "this cycle" },
-                        { label: "+ New Proposed", items: cycleStory.newProposed, sublabel: "added this cycle", accent: "#9A6800", count: cycleStory.newProposed.length, color: "#9A6800", bg: "#FEF5E7", bdr: "#F4D03F", suffix: "this cycle" },
-                        { label: "↻ Revived", items: cycleStory.revived, sublabel: "pulled back to active", accent: "#6C3483", count: cycleStory.revived.length, color: "#6C3483", bg: "#fff", bdr: "#ececec", suffix: "this cycle" },
-                    ].map(function (t) {
-                        return (React.createElement("div", { key: t.label, onClick: function () { props.onListDrill({ label: t.label, items: t.items, sublabel: t.sublabel, accent: t.accent }); }, style: { padding: "8px 12px", flex: "1 1 110px", display: "flex", flexDirection: "column", gap: 1, justifyContent: "center", cursor: "pointer", background: t.bg, border: "1px solid " + t.bdr, borderRadius: 10 } },
-                            React.createElement("div", { style: { fontSize: 9, textTransform: "uppercase", letterSpacing: .4, color: t.bg === "#FEF5E7" ? "#9A6800" : "#999", fontWeight: 600 } }, t.label),
-                            React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: t.color, lineHeight: 1.1 } }, t.count),
-                            React.createElement("div", { style: { fontSize: 9.5, color: t.bg === "#FEF5E7" ? "#9A6800" : "#aaa" } }, t.suffix)));
-                    })))),
-        newAndRevived.length > 0 && (React.createElement("section", { style: { marginBottom: 24 } },
-            React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#9A6800", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
-                React.createElement("span", null, "\uD83D\uDCE5 New Proposed and Revived Initiatives this Cycle"),
-                React.createElement("span", { style: { flex: 1, height: 1, background: "#F4D03F" } }),
-                React.createElement("span", { style: { fontSize: 10, color: "#aaa", letterSpacing: 0, fontWeight: 400, textTransform: "none" } },
-                    "(",
-                    cycleStory.newProposed.length,
-                    " new",
-                    cycleStory.revived.length > 0 ? " + " + cycleStory.revived.length + " revived" : "",
-                    ")")),
-            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 } }, (function () {
-                var revivedIds = {};
-                cycleStory.revived.forEach(function (r) { revivedIds[r.id] = true; });
-                return newAndRevived.map(function (n) {
-                    return React.createElement(QpeInitCard, { key: n.id, init: n, onDrill: onDrill, revivedFlag: Boolean(revivedIds[n.id]) });
-                });
-            })()))),
+        React.createElement("details", { style: { marginBottom: 24, background: "#fff", border: "1px solid #ececec", borderRadius: 10, overflow: "hidden" } },
+            React.createElement("summary", { style: { cursor: "pointer", padding: "10px 14px", background: "#fafbfc", fontSize: 11, textTransform: "uppercase", letterSpacing: .65, color: "#607080", fontWeight: 800, display: "flex", alignItems: "center", gap: 8, listStyle: "none" } },
+                React.createElement("span", null, "Past QPE activity"),
+                React.createElement("span", { style: { fontSize: 10, color: "#8a98a8", letterSpacing: 0, textTransform: "none", fontWeight: 500 } },
+                    cycleStory.completed.length + cycleStory.backlogged.length + cycleStory.ongoing.length + cycleStory.newProposed.length + cycleStory.revived.length,
+                    " items hidden by default")),
+            React.createElement("div", { style: { padding: "12px 14px 14px" } },
+                React.createElement("div", { style: { fontSize: 11.5, color: "#7b8792", lineHeight: 1.45, marginBottom: 10 } }, "Prior-cycle outcomes and prior New/Revived buckets are hidden by default. Open this section when you need to review the last QPE context."),
+                React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch", marginBottom: newAndRevived.length > 0 ? 14 : 0 } }, [
+                    { label: "✓ Completed", items: cycleStory.completed, sublabel: "of " + cycleStory.lastCommittedTotal + " committed last cycle", accent: "#117A65", count: cycleStory.completed.length, color: "#117A65", bg: "#fafbfc", suffix: "last cycle" },
+                    { label: "↓ Backlogged", items: cycleStory.backlogged, sublabel: "of " + cycleStory.lastCommittedTotal + " committed last cycle", accent: "#7D6608", count: cycleStory.backlogged.length, color: "#7D6608", bg: "#fafbfc", suffix: "last cycle" },
+                    { label: "↻ Ongoing", items: cycleStory.ongoing, sublabel: "carried forward from last cycle", accent: "#7D6608", count: cycleStory.ongoing.length, color: "#7D6608", bg: "#fff", bdr: "#ececec", suffix: "last cycle" },
+                    { label: "+ New Proposed", items: cycleStory.newProposed, sublabel: "added in the prior cycle", accent: "#9A6800", count: cycleStory.newProposed.length, color: "#9A6800", bg: "#FEF5E7", bdr: "#F4D03F", suffix: "last cycle" },
+                    { label: "↻ Revived", items: cycleStory.revived, sublabel: "revived in the prior cycle", accent: "#6C3483", count: cycleStory.revived.length, color: "#6C3483", bg: "#fff", bdr: "#ececec", suffix: "last cycle" },
+                ].map(function (t) {
+                    if (t.count === 0)
+                        return null;
+                    return (React.createElement("div", { key: t.label, onClick: function () { props.onListDrill({ label: t.label, items: t.items, sublabel: t.sublabel, accent: t.accent }); }, style: { padding: "8px 12px", flex: "1 1 130px", display: "flex", flexDirection: "column", gap: 1, justifyContent: "center", cursor: "pointer", background: t.bg, border: "1px solid " + (t.bdr || "#ececec"), borderRadius: 10 } },
+                        React.createElement("div", { style: { fontSize: 9, textTransform: "uppercase", letterSpacing: .4, color: t.bg === "#FEF5E7" ? "#9A6800" : "#999", fontWeight: 600 } }, t.label),
+                        React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: t.color, lineHeight: 1.1 } }, t.count),
+                        React.createElement("div", { style: { fontSize: 9.5, color: t.bg === "#FEF5E7" ? "#9A6800" : "#aaa" } }, t.suffix)));
+                })),
+                newAndRevived.length > 0 && (React.createElement("div", null,
+                    React.createElement("div", { style: { fontSize: 10.5, textTransform: "uppercase", letterSpacing: .6, color: "#9A6800", fontWeight: 800, marginBottom: 8 } }, "Prior-cycle New Proposed and Revived Initiatives"),
+                    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 } }, (function () {
+                        var revivedIds = {};
+                        cycleStory.revived.forEach(function (r) { revivedIds[r.id] = true; });
+                        return newAndRevived.map(function (n) {
+                            return React.createElement(QpeInitCard, { key: n.id, init: n, onDrill: onDrill, revivedFlag: Boolean(revivedIds[n.id]) });
+                        });
+                    })()))))),
         qpeDisplay === "rank" ? (React.createElement("section", { style: { marginBottom: 24 } },
             React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#666", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
                 React.createElement("span", null,
@@ -1975,7 +1971,7 @@ function QpeMainView(props) {
                 var sc = STATUS_CFG[i.status];
                 var isConceptItem = i.status === "Concept" || /concept/i.test(i.projectType || "");
                 return (React.createElement("div", { key: i.id, onClick: function () { onDrill(i.id); }, style: { padding: "8px 10px", borderRadius: 7, background: "#fff", border: "1px solid #ececec", cursor: "pointer", display: "grid", gridTemplateColumns: "86px 54px 1fr auto", gap: 8, alignItems: "center", minWidth: 0 }, onMouseEnter: function (e) { e.currentTarget.style.background = "#f7fafd"; }, onMouseLeave: function (e) { e.currentTarget.style.background = "#fff"; } },
-                    React.createElement("div", { style: { display: "flex", justifyContent: "flex-start" } }, i.q3Rank != null ? React.createElement(QpeRankChip, { rank: i.q3Rank, size: 9 }) : React.createElement(Chip, { bg: "#F4F6F7", tx: "#7F8C8D", size: 9 }, "Unranked")),
+                    React.createElement("div", { style: { display: "flex", justifyContent: "flex-start" } }, qpePrimaryRank(i) != null ? React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 9 }) : React.createElement(Chip, { bg: "#F4F6F7", tx: "#7F8C8D", size: 9 }, "Unranked")),
                     React.createElement(Chip, { bg: g ? g.color + "33" : "#eee", tx: g ? goalTextColor(i.goal) : "#888", size: 9 },
                         "G",
                         g ? g.num : "?"),
@@ -2017,7 +2013,7 @@ function QpeMainView(props) {
                                 renderText(i.name),
                                 " ",
                                 React.createElement("span", { style: { fontFamily: "monospace", fontSize: 9.5, color: "#aaa", fontWeight: 400 } }, renderText(i.id))),
-                            i.q3Rank != null && React.createElement(QpeRankChip, { rank: i.q3Rank, size: 8.5 }),
+                            qpePrimaryRank(i) != null && React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 8.5 }),
                             i.isNew && React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 8.5 }, "NEW"),
                             isConceptItem && React.createElement(Chip, { bg: STATUS_CFG.Concept.bg, tx: STATUS_CFG.Concept.tx, size: 8.5 }, "Concept"),
                             i.status === "Backlogged" && React.createElement(Chip, { bg: STATUS_CFG.Backlogged.bg, tx: STATUS_CFG.Backlogged.tx, size: 8.5 }, "Backlogged"),
