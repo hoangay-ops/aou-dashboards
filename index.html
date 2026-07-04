@@ -1676,6 +1676,7 @@ function QpeView(props){
   var [goalFocus, setGoalFocus] = useState("all");
   var [fStatus, setFStatus] = useState([]);
   var [newOnly, setNewOnly] = useState(false);
+  var [rankFilter, setRankFilter] = useState("all");
   var [search, setSearch] = useState("");
   var [drillRaw, setDrillRaw] = useState(null);
   var [goalDrillRaw, setGoalDrillRaw] = useState(null);
@@ -1718,21 +1719,31 @@ function QpeView(props){
       if(goalFocus !== "all" && i.goal !== goalFocus) return false;
       if(fStatus.length > 0 && fStatus.indexOf(i.status) === -1) return false;
       if(newOnly && !i.isNew) return false;
+      if(rankFilter === "ranked" && i.q3Rank == null) return false;
+      if(rankFilter === "unranked" && i.q3Rank != null) return false;
+      if(rankFilter === "top10" && (i.q3Rank == null || i.q3Rank > 10)) return false;
+      if(rankFilter === "top20" && (i.q3Rank == null || i.q3Rank > 20)) return false;
       if(search){
         var q = search.toLowerCase();
         if(i.name.toLowerCase().indexOf(q) === -1 && i.id.toLowerCase().indexOf(q) === -1 && (i.objOwner||"").toLowerCase().indexOf(q) === -1) return false;
       }
       return true;
     });
-  },[initiatives, goalFocus, fStatus, newOnly, search]);
+  },[initiatives, goalFocus, fStatus, newOnly, rankFilter, search]);
 
   var availableStatuses = useMemo(function(){
     return QPE_STATUS_KEYS.filter(function(s){return initiatives.some(function(i){return i.status === s;});});
   },[initiatives]);
 
   var drillInit = drill ? initiatives.find(function(x){return x.id === drill;}) : null;
-  var anyFilter = goalFocus !== "all" || fStatus.length > 0 || newOnly || (search !== "" && search !== null);
-  function clearAll(){ setGoalFocus("all"); setFStatus([]); setNewOnly(false); setSearch(""); }
+  var anyFilter = goalFocus !== "all" || fStatus.length > 0 || newOnly || rankFilter !== "all" || (search !== "" && search !== null);
+  function clearAll(){
+    setGoalFocus("all");
+    setFStatus([]);
+    setNewOnly(false);
+    setRankFilter("all");
+    setSearch("");
+  }
 
   if(data.state.status === "loading"){
     return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"#999",fontSize:13}}>Loading planning data…</div>;
@@ -1764,6 +1775,13 @@ function QpeView(props){
         </select>
         <MultiSelect label="Status" options={availableStatuses} selected={fStatus} onChange={setFStatus}/>
         <button onClick={function(){setNewOnly(!newOnly);}} title="Show only initiatives flagged NEW in the planning sheet" style={{fontSize:11.5,padding:"5px 11px",border:"1px solid "+(newOnly ? "#9A6800" : "#dcdcdc"),borderRadius:18,background:newOnly ? "#FEF5E7" : "#fff",color:newOnly ? "#9A6800" : "#555",cursor:"pointer",fontWeight:newOnly ? 600 : 400}}>📥 New only</button>
+        <select value={rankFilter} onChange={function(e){setRankFilter(e.target.value);}} title="Filter initiatives by Q3 rank" style={{fontSize:11.5,padding:"5px 10px",border:"1px solid "+(rankFilter !== "all" ? "#2471A3" : "#dcdcdc"),borderRadius:18,background:rankFilter !== "all" ? "#EBF5FB" : "#fff",color:rankFilter !== "all" ? "#2471A3" : "#555",fontWeight:rankFilter !== "all" ? 600 : 400}}>
+          <option value="all">All ranks</option>
+          <option value="ranked">Ranked only</option>
+          <option value="unranked">Unranked only</option>
+          <option value="top10">Top 10</option>
+          <option value="top20">Top 20</option>
+        </select>
         {anyFilter && <button onClick={clearAll} style={{fontSize:11.5,background:"none",border:"none",color:"#C0392B",cursor:"pointer",fontWeight:500}}>✕ Clear</button>}
         <div style={{flex:1}}/>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}}/>
@@ -1799,7 +1817,7 @@ function QpeView(props){
           {icon:"🎯", title:"Goal lanes", color:"#6C3483", bg:"#FBF7FF",
             body:<>Goal lanes group initiatives by strategic goal. Click a lane header to open goal details, including objectives and owners; click an initiative row to open its drill-down.</>},
           {icon:"🔎", title:"Filters & search", color:"#117A65", bg:"#F4FFFB",
-            body:<>Use Focus, Status, New only, and Search to narrow the visible planning set. <strong>Clear</strong> resets the current filters.</>},
+            body:<>Use Focus, Status, New only, Rank, and Search to narrow the visible planning set. <strong>Clear</strong> resets the current filters.</>},
           {icon:"📄", title:"Initiative drill-down", color:"#B3541E", bg:"#FFF8F2",
             body:<>Drill-downs use the shared identity block: <strong>ID</strong>, <strong>Name</strong>, <strong>Goal</strong>, <strong>Objective</strong>, <strong>Status</strong>, <strong>Project Type</strong>, and <strong>POC/PdM</strong>. Cross-view buttons jump to the same initiative in Roadmap or Capacity.</>},
           {icon:"⚠", title:"Data quality flags", color:"#7D6608", bg:"#FFF9EC",
