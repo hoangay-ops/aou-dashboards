@@ -1085,6 +1085,46 @@ function qpeParseRank(v) {
     var n = parseInt(m[0], 10);
     return isNaN(n) ? null : n;
 }
+function qpeQuarterParts(label) {
+    var m = String(label || "").match(/Q([1-4])\s*(?:'|’)?(\d{2}|\d{4})/i);
+    if (!m)
+        return null;
+    var y = parseInt(m[2], 10);
+    if (y < 100)
+        y += 2000;
+    return { q: parseInt(m[1], 10), year: y, shortYear: String(y).slice(2) };
+}
+function qpeValueForQuarterStatus(headerRow, row, quarterLabel, fallbackAccessor, aliases) {
+    aliases = aliases || [];
+    if (fallbackAccessor && aliases.length) {
+        var byAlias = fallbackAccessor.apply(null, [row].concat(aliases));
+        if (byAlias)
+            return byAlias;
+    }
+    var qp = qpeQuarterParts(quarterLabel);
+    if (!qp || !headerRow || !row)
+        return "";
+    for (var i = 0; i < headerRow.length; i++) {
+        var h = normHeader(headerRow[i]).replace(/[’]/g, "'");
+        var hasQuarter = h.indexOf("q" + qp.q) !== -1;
+        var hasYear = h.indexOf(String(qp.year)) !== -1 || h.indexOf("'" + qp.shortYear) !== -1 || h.indexOf(" " + qp.shortYear) !== -1;
+        var hasStatus = h.indexOf("status") !== -1 || h.indexOf("planning") !== -1;
+        if (hasQuarter && hasYear && hasStatus) {
+            var v = row[i];
+            if (v != null && String(v).trim() !== "")
+                return String(v).trim();
+        }
+    }
+    return "";
+}
+function qpeDisplayStatusRaw(raw) {
+    var s = String(raw || "").trim();
+    if (!s)
+        return "";
+    s = s.replace(/^Q[1-4]\s*(?:\d{4}|['’]?\d{2})\s*/i, "");
+    s = s.replace(/^status\s*[:–—-]?\s*/i, "");
+    return s || String(raw || "").trim();
+}
 const QPE_DEFAULT_HIDDEN_STATUSES = ["Complete", "Backlogged"];
 function compareInitiativeIds(a, b) {
     var ap = String((a && a.id) || a || "").split(".").map(Number);
@@ -1190,9 +1230,9 @@ function qpeNormalizePlanning(csvText) {
         var goal = goalMatch ? goalMatch[1] : "";
         if (!GOALS[goal])
             return;
-        var q3sRaw = get(row, "Q3 2026 Status", "Q3 Status");
-        var q2sRaw = get(row, "Q2 2026 Status", "Q2 Status");
-        var prevRaw = get(row, "Previous Status (Q4 '25)", "Previous Status", "Q4 2025 Status");
+        var q3sRaw = qpeValueForQuarterStatus(header, row, CYCLE.current, get, ["Q3 2026 Status", "Q3 '26 Status", "Q3 ’26 Status", "Q3 Status", "Q3 2026 Planning Status", "Q3 '26 Planning Status"]);
+        var q2sRaw = qpeValueForQuarterStatus(header, row, CYCLE.previous, get, ["Q2 2026 Status", "Q2 '26 Status", "Q2 ’26 Status", "Q2 Status", "Q2 2026 Planning Status", "Q2 '26 Planning Status"]);
+        var prevRaw = qpeValueForQuarterStatus(header, row, CYCLE.baseline, get, ["Previous Status (Q4 '25)", "Previous Status (Q4 2025)", "Previous Status", "Q4 2025 Status", "Q4 '25 Status", "Q4 ’25 Status", "Q4 Status"]);
         var q2r = qpeParseRank(get(row, "Q2 '26 Rank", "Q2 2026 Rank"));
         var q3r = qpeParseRank(get(row, "New Q3 '26 Rank", "Q3 '26 Rank", "Q3 2026 Rank"));
         var pt = get(row, "Project Type", "Type");
@@ -1379,9 +1419,10 @@ function QpeDrillPanel(props) {
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, QPE_QUARTERS_HIST.map(function (q, i) {
                     var h = init.history.find(function (x) { return x.quarter === q; });
                     var s = h ? h.status : null;
-                    var displayLabel = s;
-                    var displayBg = s ? STATUS_CFG[s] && STATUS_CFG[s].bg : null;
-                    var displayTx = s ? STATUS_CFG[s] && STATUS_CFG[s].tx : null;
+                    var rawLabel = h && h.raw ? qpeDisplayStatusRaw(h.raw) : "";
+                    var displayLabel = s || rawLabel;
+                    var displayBg = s ? STATUS_CFG[s] && STATUS_CFG[s].bg : (rawLabel ? "#EAECEE" : null);
+                    var displayTx = s ? STATUS_CFG[s] && STATUS_CFG[s].tx : (rawLabel ? "#566573" : null);
                     if (s === "Proposed" && q === CYCLE.current) {
                         if (init.isNew) {
                             displayLabel = "Proposed (New)";
@@ -1395,7 +1436,7 @@ function QpeDrillPanel(props) {
                     return (React.createElement(React.Fragment, { key: q },
                         React.createElement("div", { style: { textAlign: "center" } },
                             React.createElement("div", { style: { fontSize: 9, color: "#aaa", marginBottom: 3 } }, q),
-                            s ? React.createElement(Chip, { bg: displayBg, tx: displayTx, size: 9.5 }, displayLabel) : React.createElement("span", { style: { fontSize: 9.5, color: "#ccc" } }, "\u2014")),
+                            displayLabel ? React.createElement(Chip, { bg: displayBg, tx: displayTx, size: 9.5 }, displayLabel) : React.createElement("span", { style: { fontSize: 9.5, color: "#ccc" } }, "\u2014")),
                         i < QPE_QUARTERS_HIST.length - 1 && React.createElement("span", { style: { color: "#ddd", fontSize: 11 } }, "\u2192")));
                 }))),
             (init.q3Rank != null || init.q2Rank != null) && (React.createElement("div", { style: { marginBottom: 14, display: "flex", gap: 6, flexWrap: "wrap" } },
