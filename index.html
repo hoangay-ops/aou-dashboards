@@ -969,16 +969,26 @@ function qpeNormalizePlanning(csvText){
     var goalMatch = String(goalRaw).match(/(\d)/);
     var goal = goalMatch ? goalMatch[1] : "";
     if(!GOALS[goal]) return;
-    var q3s = get(row, "Q3 2026 Status", "Q3 Status");
-    var q2s = get(row, "Q2 2026 Status", "Q2 Status");
-    var prev = get(row, "Previous Status (Q4 '25)", "Previous Status", "Q4 2025 Status");
+    var q3sRaw = get(row, "Q3 2026 Status", "Q3 Status");
+    var q2sRaw = get(row, "Q2 2026 Status", "Q2 Status");
+    var prevRaw = get(row, "Previous Status (Q4 '25)", "Previous Status", "Q4 2025 Status");
     var q2r = qpeParseRank(get(row, "Q2 '26 Rank", "Q2 2026 Rank"));
     var q3r = qpeParseRank(get(row, "New Q3 '26 Rank", "Q3 '26 Rank", "Q3 2026 Rank"));
     var pt = get(row, "Project Type", "Type");
+
+    /* RANKED = COMMITTED. Per program rule: any initiative with a Q3 rank
+       is Committed for Q3, regardless of the literal Status column text
+       (which may still read "Q3 2026 Proposed" on the sheet). Applies the
+       same logic historically for Q2 so the quarter-over-quarter history
+       strip is consistent. */
+    var q3s = q3r != null ? "Committed" : q3sRaw;
+    var q2s = q2r != null ? "Committed" : q2sRaw;
+    var prev = prevRaw;
+
     var history = [];
-    if(prev) history.push({quarter:CYCLE.baseline, status:qpeParseStatus(prev), raw:prev});
-    if(q2s)  history.push({quarter:CYCLE.previous, status:qpeParseStatus(q2s),  raw:q2s});
-    if(q3s)  history.push({quarter:CYCLE.current,  status:qpeParseStatus(q3s),  raw:q3s});
+    if(prev) history.push({quarter:CYCLE.baseline, status:qpeParseStatus(prev), raw:prevRaw});
+    if(q2s)  history.push({quarter:CYCLE.previous, status:qpeParseStatus(q2s),  raw:q2sRaw});
+    if(q3s)  history.push({quarter:CYCLE.current,  status:qpeParseStatus(q3s),  raw:q3sRaw});
     inits.push({
       id:id, name:name, goal:goal,
       obj: get(row, "26 Obj", "Objective", "Obj"),
@@ -1835,9 +1845,13 @@ function capParseInitiatives(csvText, capacityIds){
     var gm = String(get(row, "5 year Goal", "Goal", "5-year Goal")).match(/(\d)/);
     var g = gm ? gm[1] : "";
     if(!GOALS[g]) return acc;
-    var q3s = get(row, "Q3 2026 Status", "Q3 Status");
-    var q2s = get(row, "Q2 2026 Status", "Q2 Status");
-    var status = capParseStatus(q3s) || capParseStatus(q2s);
+    var q3sRaw = get(row, "Q3 2026 Status", "Q3 Status");
+var q2sRaw = get(row, "Q2 2026 Status", "Q2 Status");
+var q3rRaw = get(row, "New Q3 '26 Rank", "Q3 '26 Rank", "Q3 2026 Rank");
+var q3rHasRank = q3rRaw !== null && q3rRaw !== undefined && String(q3rRaw).trim() !== "";
+var q3s = q3rHasRank ? "Committed" : q3sRaw;
+var q2s = q2sRaw;
+var status = capParseStatus(q3s) || capParseStatus(q2s);
     var projType = get(row, "Project Type", "Type");
     var isConcept = /concept/i.test(projType) || status === "Concept";
 
@@ -1877,9 +1891,13 @@ function capCountExcludedInitiatives(csvText, capacityIds){
     var gm = String(get(row, "5 year Goal", "Goal", "5-year Goal")).match(/(\d)/);
     var g = gm ? gm[1] : "";
     if(!GOALS[g]) return;
-    var q3s = get(row, "Q3 2026 Status", "Q3 Status");
-    var q2s = get(row, "Q2 2026 Status", "Q2 Status");
-    var status = capParseStatus(q3s) || capParseStatus(q2s);
+    var q3sRaw = get(row, "Q3 2026 Status", "Q3 Status");
+var q2sRaw = get(row, "Q2 2026 Status", "Q2 Status");
+var q3rRaw = get(row, "New Q3 '26 Rank", "Q3 '26 Rank", "Q3 2026 Rank");
+var q3rHasRank = q3rRaw !== null && q3rRaw !== undefined && String(q3rRaw).trim() !== "";
+var q3s = q3rHasRank ? "Committed" : q3sRaw;
+var q2s = q2sRaw;
+var status = capParseStatus(q3s) || capParseStatus(q2s);
     var projType = get(row, "Project Type", "Type");
     var isConcept = /concept/i.test(projType) || status === "Concept";
     if(status === "Complete" || status === "Eliminated" || status === "Backlogged") count++;
