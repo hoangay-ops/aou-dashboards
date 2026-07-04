@@ -1381,6 +1381,7 @@ function QpeListPanel(props){
                         <span style={{width:7,height:7,borderRadius:"50%",background:sc?sc.dot:"#ccc",flexShrink:0}}/>
                         <span style={{fontFamily:"monospace",fontSize:10,color:"#aaa",flexShrink:0}}>{i.id}</span>
                         <span style={{fontSize:12,color:"#333",flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={i.name}>{i.name}</span>
+                        {i.q3Rank != null && <QpeRankChip rank={i.q3Rank} size={8.5}/>}
                         {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
                       </div>
                     );
@@ -1395,6 +1396,12 @@ function QpeListPanel(props){
   );
 }
 
+function QpeRankChip(props){
+  var rank = props.rank;
+  if(rank == null) return null;
+  return <Chip bg="#FEF5E7" tx="#9A6800" size={props.size || 9}>Rank #{rank}</Chip>;
+}
+
 function QpeInitCard(props){
   var i = props.init;
   var g = GOALS[i.goal];
@@ -1405,6 +1412,7 @@ function QpeInitCard(props){
       <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flexWrap:"wrap"}}>
         <Chip bg={g.color+"33"} tx={goalTextColor(i.goal)} size={9.5}>G{g.num}</Chip>
         <span style={{fontFamily:"monospace",fontSize:9.5,color:"#aaa"}}>{i.id}</span>
+        {i.q3Rank != null && <QpeRankChip rank={i.q3Rank} size={9}/>}
         {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={9}>NEW</Chip>}
         {props.revivedFlag && !i.isNew && <Chip bg="#F4ECF7" tx="#6C3483" size={9}>REVIVED</Chip>}
       </div>
@@ -1418,6 +1426,7 @@ function QpeInitCard(props){
 function QpeMainView(props){
   var initiatives = props.initiatives, onDrill = props.onDrill, onGoalDrill = props.onGoalDrill, goalFocus = props.goalFocus;
   var goalsRef = props.goalsRef || {};
+  var qpeSort = props.qpeSort || "id";
 
   /* Current-cycle active summary — answers "what's ratified and active
      right now" using only this-cycle status. Does not depend on
@@ -1475,14 +1484,33 @@ function QpeMainView(props){
     }
     return 0;
   }
-  Object.keys(goalLanes).forEach(function(k){ goalLanes[k].sort(function(a, b){ return compareIds(a, b); }); });
+  function compareRankAsc(a, b){
+    var ar = a.q3Rank == null ? 999999 : a.q3Rank;
+    var br = b.q3Rank == null ? 999999 : b.q3Rank;
+    if(ar !== br) return ar - br;
+    return compareIds(a, b);
+  }
+  function compareRankDesc(a, b){
+    var ar = a.q3Rank == null ? -1 : a.q3Rank;
+    var br = b.q3Rank == null ? -1 : b.q3Rank;
+    if(ar !== br) return br - ar;
+    return compareIds(a, b);
+  }
+  function compareQpeItems(a, b){
+    if(qpeSort === "rank-asc") return compareRankAsc(a, b);
+    if(qpeSort === "rank-desc") return compareRankDesc(a, b);
+    if(qpeSort === "name") return String(a.name || "").localeCompare(String(b.name || "")) || compareIds(a, b);
+    if(qpeSort === "goal") return String(a.goal || "").localeCompare(String(b.goal || "")) || compareIds(a, b);
+    return compareIds(a, b);
+  }
+  Object.keys(goalLanes).forEach(function(k){ goalLanes[k].sort(compareQpeItems); });
 
   return (
     <div style={{padding:"20px 28px 32px"}}>
 
       <section style={{marginBottom:20}}>
         <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:.8,color:"#666",fontWeight:700,marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
-          <span>Ratified & Active — {CYCLE.current}</span>
+          <span>Ratified & Active — {CYCLE.current} - Q1 2027</span>
           <span style={{flex:1,height:1,background:"#ddd"}}/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:10}}>
@@ -1498,18 +1526,22 @@ function QpeMainView(props){
             <div style={{fontSize:28,fontWeight:800,color:"#9A6800",lineHeight:1.1,marginTop:3}}>{activeSummary.proposed.length}</div>
             <div style={{fontSize:9.5,color:"#999",marginTop:2}}>not ranked</div>
           </div>
-          <div onClick={function(){props.onListDrill({label:"Backlogged — "+CYCLE.current,items:activeSummary.backlogged,sublabel:"deferred this cycle",accent:"#7D6608"});}}
-            style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10,cursor:"pointer"}}>
-            <div style={{fontSize:9.5,color:"#7D6608",fontWeight:700,textTransform:"uppercase",letterSpacing:.4}}>Backlogged</div>
-            <div style={{fontSize:28,fontWeight:800,color:"#7D6608",lineHeight:1.1,marginTop:3}}>{activeSummary.backlogged.length}</div>
-            <div style={{fontSize:9.5,color:"#999",marginTop:2}}>deferred</div>
-          </div>
-          <div onClick={function(){props.onListDrill({label:"Complete — "+CYCLE.current,items:activeSummary.complete,sublabel:"closed this cycle",accent:"#1E8449"});}}
-            style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10,cursor:"pointer"}}>
-            <div style={{fontSize:9.5,color:"#1E8449",fontWeight:700,textTransform:"uppercase",letterSpacing:.4}}>Complete</div>
-            <div style={{fontSize:28,fontWeight:800,color:"#1E8449",lineHeight:1.1,marginTop:3}}>{activeSummary.complete.length}</div>
-            <div style={{fontSize:9.5,color:"#999",marginTop:2}}>closed</div>
-          </div>
+          {activeSummary.backlogged.length > 0 && (
+            <div onClick={function(){props.onListDrill({label:"Backlogged — "+CYCLE.current,items:activeSummary.backlogged,sublabel:"deferred this cycle",accent:"#7D6608"});}}
+              style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10,cursor:"pointer"}}>
+              <div style={{fontSize:9.5,color:"#7D6608",fontWeight:700,textTransform:"uppercase",letterSpacing:.4}}>Backlogged</div>
+              <div style={{fontSize:28,fontWeight:800,color:"#7D6608",lineHeight:1.1,marginTop:3}}>{activeSummary.backlogged.length}</div>
+              <div style={{fontSize:9.5,color:"#999",marginTop:2}}>deferred</div>
+            </div>
+          )}
+          {activeSummary.complete.length > 0 && (
+            <div onClick={function(){props.onListDrill({label:"Complete — "+CYCLE.current,items:activeSummary.complete,sublabel:"closed this cycle",accent:"#1E8449"});}}
+              style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10,cursor:"pointer"}}>
+              <div style={{fontSize:9.5,color:"#1E8449",fontWeight:700,textTransform:"uppercase",letterSpacing:.4}}>Complete</div>
+              <div style={{fontSize:28,fontWeight:800,color:"#1E8449",lineHeight:1.1,marginTop:3}}>{activeSummary.complete.length}</div>
+              <div style={{fontSize:9.5,color:"#999",marginTop:2}}>closed</div>
+            </div>
+          )}
           {activeSummary.concept.length > 0 && (
             <div onClick={function(){props.onListDrill({label:"Concept — "+CYCLE.current,items:activeSummary.concept,sublabel:"exploratory, excluded from capacity",accent:"#6C3483"});}}
               style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10,cursor:"pointer"}}>
@@ -1524,7 +1556,7 @@ function QpeMainView(props){
       <section style={{marginBottom:24}}>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"stretch"}}>
           <div style={{display:"flex",gap:8,flex:"1 1 320px",minWidth:280}}>
-            <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:4,flex:"0 1 160px",background:"#fafbfc",border:"1px solid #ececec",borderRadius:10}}>
+            <div style={{padding:"10px 12px",display:(cycleStory.completed.length > 0 || cycleStory.backlogged.length > 0) ? "flex" : "none",flexDirection:"column",gap:4,flex:"0 1 160px",background:"#fafbfc",border:"1px solid #ececec",borderRadius:10}}>
               <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:.5,color:"#999",fontWeight:600,display:"flex",alignItems:"center"}}>
                 <span style={{fontSize:14,fontWeight:600,lineHeight:1,marginRight:4,color:"#999"}}>←</span>Outcomes from last cycle
               </div>
@@ -1563,6 +1595,7 @@ function QpeMainView(props){
               {label:"✓ Completed",     items:cycleStory.completed,  sublabel:"of "+cycleStory.lastCommittedTotal+" committed last cycle", accent:"#117A65", count:cycleStory.completed.length,  color:"#117A65", bg:"#fafbfc", suffix:"last cycle"},
               {label:"↓ Backlogged",    items:cycleStory.backlogged, sublabel:"of "+cycleStory.lastCommittedTotal+" committed last cycle", accent:"#7D6608", count:cycleStory.backlogged.length, color:"#7D6608", bg:"#fafbfc", suffix:"last cycle"},
             ].map(function(t){
+              if(t.count === 0) return null;
               return (
                 <div key={t.label} onClick={function(){props.onListDrill({label:t.label,items:t.items,sublabel:t.sublabel,accent:t.accent});}} style={{padding:"8px 12px",flex:"1 1 110px",display:"flex",flexDirection:"column",gap:1,justifyContent:"center",cursor:"pointer",background:t.bg,border:"1px solid #ececec",borderRadius:10}}>
                   <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:.4,color:"#999",fontWeight:600}}>{t.label}</div>
@@ -1571,7 +1604,7 @@ function QpeMainView(props){
                 </div>
               );
             })}
-            <div style={{width:1,background:"#ddd",margin:"4px 4px",flexShrink:0}}/>
+            {(cycleStory.completed.length > 0 || cycleStory.backlogged.length > 0) && <div style={{width:1,background:"#ddd",margin:"4px 4px",flexShrink:0}}/>}
             {[
               {label:"↻ Ongoing",       items:cycleStory.ongoing,    sublabel:"carried forward from last cycle", accent:"#7D6608", count:cycleStory.ongoing.length,    color:"#7D6608", bg:"#fff",     bdr:"#ececec", suffix:"this cycle"},
               {label:"+ New Proposed",  items:cycleStory.newProposed,sublabel:"added this cycle",                accent:"#9A6800", count:cycleStory.newProposed.length,color:"#9A6800", bg:"#FEF5E7",  bdr:"#F4D03F", suffix:"this cycle"},
@@ -1653,6 +1686,7 @@ function QpeMainView(props){
                               {renderText(i.id)}
                             </span>
                           </span>
+                          {i.q3Rank != null && <QpeRankChip rank={i.q3Rank} size={8.5}/>}
                           {i.isNew && <Chip bg="#FEF5E7" tx="#9A6800" size={8.5}>NEW</Chip>}
                           {isConceptItem && <Chip bg={STATUS_CFG.Concept.bg} tx={STATUS_CFG.Concept.tx} size={8.5}>Concept</Chip>}
                           {i.status === "Backlogged" && <Chip bg={STATUS_CFG.Backlogged.bg} tx={STATUS_CFG.Backlogged.tx} size={8.5}>Backlogged</Chip>}
@@ -1677,6 +1711,7 @@ function QpeView(props){
   var [fStatus, setFStatus] = useState([]);
   var [newOnly, setNewOnly] = useState(false);
   var [rankFilter, setRankFilter] = useState("all");
+  var [qpeSort, setQpeSort] = useState("id");
   var [search, setSearch] = useState("");
   var [drillRaw, setDrillRaw] = useState(null);
   var [goalDrillRaw, setGoalDrillRaw] = useState(null);
@@ -1718,6 +1753,7 @@ function QpeView(props){
     return initiatives.filter(function(i){
       if(goalFocus !== "all" && i.goal !== goalFocus) return false;
       if(fStatus.length > 0 && fStatus.indexOf(i.status) === -1) return false;
+      if(fStatus.length === 0 && (i.status === "Complete" || i.status === "Backlogged")) return false;
       if(newOnly && !i.isNew) return false;
       if(rankFilter === "ranked" && i.q3Rank == null) return false;
       if(rankFilter === "unranked" && i.q3Rank != null) return false;
@@ -1728,8 +1764,33 @@ function QpeView(props){
         if(i.name.toLowerCase().indexOf(q) === -1 && i.id.toLowerCase().indexOf(q) === -1 && (i.objOwner||"").toLowerCase().indexOf(q) === -1) return false;
       }
       return true;
+    }).sort(function(a, b){
+      function compareIdsLocal(x, y){
+        var xp = String(x.id || "").split(".").map(Number);
+        var yp = String(y.id || "").split(".").map(Number);
+        for(var k = 0; k < Math.max(xp.length, yp.length); k++){
+          var xv = xp[k] || 0, yv = yp[k] || 0;
+          if(xv !== yv) return xv - yv;
+        }
+        return 0;
+      }
+      if(qpeSort === "rank-asc"){
+        var ar = a.q3Rank == null ? 999999 : a.q3Rank;
+        var br = b.q3Rank == null ? 999999 : b.q3Rank;
+        if(ar !== br) return ar - br;
+        return compareIdsLocal(a, b);
+      }
+      if(qpeSort === "rank-desc"){
+        var ar2 = a.q3Rank == null ? -1 : a.q3Rank;
+        var br2 = b.q3Rank == null ? -1 : b.q3Rank;
+        if(ar2 !== br2) return br2 - ar2;
+        return compareIdsLocal(a, b);
+      }
+      if(qpeSort === "name") return String(a.name || "").localeCompare(String(b.name || "")) || compareIdsLocal(a, b);
+      if(qpeSort === "goal") return String(a.goal || "").localeCompare(String(b.goal || "")) || compareIdsLocal(a, b);
+      return compareIdsLocal(a, b);
     });
-  },[initiatives, goalFocus, fStatus, newOnly, rankFilter, search]);
+  },[initiatives, goalFocus, fStatus, newOnly, rankFilter, qpeSort, search]);
 
   var availableStatuses = useMemo(function(){
     return QPE_STATUS_KEYS.filter(function(s){return initiatives.some(function(i){return i.status === s;});});
@@ -1782,6 +1843,13 @@ function QpeView(props){
           <option value="top10">Top 10</option>
           <option value="top20">Top 20</option>
         </select>
+        <select value={qpeSort} onChange={function(e){setQpeSort(e.target.value);}} title="Sort visible initiatives" style={{fontSize:11.5,padding:"5px 10px",border:"1px solid "+(qpeSort !== "id" ? "#2471A3" : "#dcdcdc"),borderRadius:18,background:qpeSort !== "id" ? "#EBF5FB" : "#fff",color:qpeSort !== "id" ? "#2471A3" : "#555",fontWeight:qpeSort !== "id" ? 600 : 400}}>
+          <option value="id">Sort: ID</option>
+          <option value="rank-asc">Sort: Rank ↑</option>
+          <option value="rank-desc">Sort: Rank ↓</option>
+          <option value="name">Sort: Name</option>
+          <option value="goal">Sort: Goal</option>
+        </select>
         {anyFilter && <button onClick={clearAll} style={{fontSize:11.5,background:"none",border:"none",color:"#C0392B",cursor:"pointer",fontWeight:500}}>✕ Clear</button>}
         <div style={{flex:1}}/>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{fontSize:12,padding:"5px 11px",border:"1px solid #dcdcdc",borderRadius:18,width:200}}/>
@@ -1790,7 +1858,7 @@ function QpeView(props){
       </div>
 
       <div style={{flex:1,overflow:"auto"}}>
-        <QpeMainView initiatives={filtered} onDrill={setDrill} onGoalDrill={setGoalDrill} onListDrill={setListDrill} goalFocus={goalFocus} goalsRef={goalsRef}/>
+        <QpeMainView initiatives={filtered} onDrill={setDrill} onGoalDrill={setGoalDrill} onListDrill={setListDrill} goalFocus={goalFocus} goalsRef={goalsRef} qpeSort={qpeSort}/>
       </div>
 
       {drillInit && (IS_EMBEDDED
