@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head> 
+<head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>All of Us — Program Dashboards</title>
@@ -140,6 +140,7 @@ const CYCLE = {
     baselineShort: "Q4 '25",
 };
 const PLANNING_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTFUiVPhIMgZnBSRzZaHeu-tYfaCnUbwqQzG7W4Rg8YG56_MoFUg898JjZOjsDkx3wGyp1ZLRlI2fM/pub?gid=0&single=true&output=csv";
+const PREVIOUS_PLANNING_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=0&single=true&output=csv";
 const GOALS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=1157686184&single=true&output=csv";
 const CAPACITY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRBMoz4Ih_0AkKsm0qr1xfM4tkppaQqFJVWJ8IE6tmSO99MmxUOW8scahb2ljMapz_lPO_4Q_EaKDR8/pub?gid=910516878&single=true&output=csv";
 const PSI_URLS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRdDL-Nc8nz2_SPI_ZbsCxkF5rP3T4nkJLVYKEwRIl-RDAuy3l0Dscs-jLpfIhqCdHgBwIZARQ1zqoG/pub?gid=263432553&single=true&output=csv";
@@ -470,6 +471,16 @@ function validateCsvSchemas(state) {
         ["Project Type", "Type"]
     ]));
     issues = issues.concat(validateDuplicatePlanningIds(planningRows, planningHeaderIdx));
+    if (state.previousPlanningCsv) {
+        var previousRows = parseCSV(state.previousPlanningCsv || "");
+        var previousHeaderIdx = previousRows.length ? qpeFindHeaderRow(previousRows) : 0;
+        issues = issues.concat(validateHeaderGroups("Previous Planning", previousRows, previousHeaderIdx, [
+            ["ID"],
+            ["Initiative Name", "Name"],
+            ["Q2 2026 Status", "Q2 Status", "Status", "Planning Status"]
+        ]));
+        issues = issues.concat(validateDuplicatePlanningIds(previousRows, previousHeaderIdx));
+    }
     var goalsRows = parseCSV(state.goalsCsv || "");
     var goalsHeaderIdx = findLikelyHeaderRow(goalsRows, [["Goal", "Goal #", "Goal Number", "G#"], ["Objective", "Obj", "Objective #", "Obj #"]]);
     issues = issues.concat(validateHeaderGroups("Goals", goalsRows, goalsHeaderIdx, [
@@ -857,6 +868,7 @@ function useDataLoader() {
         error: "",
         loadedAt: null,
         planningCsv: "",
+        previousPlanningCsv: "",
         goalsCsv: "",
         capacityCsv: "",
         roadmapCsv: "",
@@ -885,6 +897,7 @@ function useDataLoader() {
         }
         Promise.all([
             fetchText(PLANNING_CSV_URL),
+            fetchText(PREVIOUS_PLANNING_CSV_URL).catch(function () { return ""; }),
             fetchText(GOALS_CSV_URL),
             fetchText(CAPACITY_CSV_URL).catch(function () { return ""; }),
             fetchRoadmapCsv(),
@@ -896,10 +909,11 @@ function useDataLoader() {
                 error: "",
                 loadedAt: new Date(),
                 planningCsv: results[0],
-                goalsCsv: results[1],
-                capacityCsv: results[2],
-                roadmapCsv: results[3],
-                psiUrlsCsv: results[4],
+                previousPlanningCsv: results[1],
+                goalsCsv: results[2],
+                capacityCsv: results[3],
+                roadmapCsv: results[4],
+                psiUrlsCsv: results[5],
             });
         })
             .catch(function (err) {
@@ -1117,6 +1131,75 @@ function qpeValueForQuarterStatus(headerRow, row, quarterLabel, fallbackAccessor
     }
     return "";
 }
+function qpeHistoryAliasesForQuarter(quarterLabel) {
+    var qp = qpeQuarterParts(quarterLabel);
+    if (!qp)
+        return [];
+    var yy = "'" + qp.shortYear;
+    var yyCurly = "’" + qp.shortYear;
+    return [
+        "Q" + qp.q + " " + qp.year + " Status",
+        "Q" + qp.q + " " + yy + " Status",
+        "Q" + qp.q + " " + yyCurly + " Status",
+        "Q" + qp.q + " Status",
+        "Q" + qp.q + " " + qp.year + " Planning Status",
+        "Q" + qp.q + " " + yy + " Planning Status"
+    ];
+}
+function qpeRankAliasesForQuarter(quarterLabel) {
+    var qp = qpeQuarterParts(quarterLabel);
+    if (!qp)
+        return [];
+    return [
+        "New Q" + qp.q + " '" + qp.shortYear + " Rank",
+        "New Q" + qp.q + " ’" + qp.shortYear + " Rank",
+        "Q" + qp.q + " '" + qp.shortYear + " Rank",
+        "Q" + qp.q + " ’" + qp.shortYear + " Rank",
+        "Q" + qp.q + " " + qp.year + " Rank"
+    ];
+}
+function qpeSetHistoryEntry(map, id, quarter, raw, rank) {
+    if (!id || (!raw && rank == null))
+        return;
+    if (!map[id])
+        map[id] = {};
+    var effectiveRaw = rank != null ? (raw || "Committed") : raw;
+    map[id][quarter] = {
+        raw: effectiveRaw,
+        status: qpeParseStatus(effectiveRaw),
+        rank: rank == null ? null : rank
+    };
+}
+function qpeBuildPlanningHistoryMap(csvText) {
+    var map = {};
+    if (!csvText)
+        return map;
+    var rows = parseCSV(csvText);
+    if (!rows.length)
+        return map;
+    var headerIdx = qpeFindHeaderRow(rows);
+    var header = rows[headerIdx] || [];
+    var body = rows.slice(headerIdx + 1);
+    var get = makeRowAccessor(header);
+    body.forEach(function (row) {
+        var id = get(row, "ID");
+        if (!id)
+            return;
+        var prevRank = qpeParseRank(get.apply(null, [row].concat(qpeRankAliasesForQuarter(CYCLE.previous))));
+        var prevRaw = qpeValueForQuarterStatus(header, row, CYCLE.previous, get, qpeHistoryAliasesForQuarter(CYCLE.previous));
+        if (!prevRaw)
+            prevRaw = get(row, "Status", "Planning Status", "Current Status");
+        qpeSetHistoryEntry(map, id, CYCLE.previous, prevRaw, prevRank);
+        var baseRank = qpeParseRank(get.apply(null, [row].concat(qpeRankAliasesForQuarter(CYCLE.baseline))));
+        var baseRaw = qpeValueForQuarterStatus(header, row, CYCLE.baseline, get, [
+            "Previous Status (" + CYCLE.baselineShort + ")",
+            "Previous Status (" + CYCLE.baseline + ")",
+            "Previous Status"
+        ].concat(qpeHistoryAliasesForQuarter(CYCLE.baseline)));
+        qpeSetHistoryEntry(map, id, CYCLE.baseline, baseRaw, baseRank);
+    });
+    return map;
+}
 function qpeDisplayStatusRaw(raw) {
     var s = String(raw || "").trim();
     if (!s)
@@ -1200,7 +1283,7 @@ function qpeFindHeaderRow(rows) {
     }
     return 0;
 }
-function qpeNormalizePlanning(csvText) {
+function qpeNormalizePlanning(csvText, previousCsvText) {
     if (!csvText)
         return [];
     var rows = parseCSV(csvText);
@@ -1210,6 +1293,7 @@ function qpeNormalizePlanning(csvText) {
     var header = rows[headerIdx];
     var body = rows.slice(headerIdx + 1);
     var get = makeRowAccessor(header);
+    var previousHistoryMap = qpeBuildPlanningHistoryMap(previousCsvText);
     var inits = [];
     body.forEach(function (row) {
         var blank = true;
@@ -1230,11 +1314,23 @@ function qpeNormalizePlanning(csvText) {
         var goal = goalMatch ? goalMatch[1] : "";
         if (!GOALS[goal])
             return;
-        var q3sRaw = qpeValueForQuarterStatus(header, row, CYCLE.current, get, ["Q3 2026 Status", "Q3 '26 Status", "Q3 ’26 Status", "Q3 Status", "Q3 2026 Planning Status", "Q3 '26 Planning Status"]);
-        var q2sRaw = qpeValueForQuarterStatus(header, row, CYCLE.previous, get, ["Q2 2026 Status", "Q2 '26 Status", "Q2 ’26 Status", "Q2 Status", "Q2 2026 Planning Status", "Q2 '26 Planning Status"]);
-        var prevRaw = qpeValueForQuarterStatus(header, row, CYCLE.baseline, get, ["Previous Status (Q4 '25)", "Previous Status (Q4 2025)", "Previous Status", "Q4 2025 Status", "Q4 '25 Status", "Q4 ’25 Status", "Q4 Status"]);
-        var q2r = qpeParseRank(get(row, "Q2 '26 Rank", "Q2 2026 Rank"));
-        var q3r = qpeParseRank(get(row, "New Q3 '26 Rank", "Q3 '26 Rank", "Q3 2026 Rank"));
+        var q3sRaw = qpeValueForQuarterStatus(header, row, CYCLE.current, get, qpeHistoryAliasesForQuarter(CYCLE.current));
+        var q2sRaw = qpeValueForQuarterStatus(header, row, CYCLE.previous, get, qpeHistoryAliasesForQuarter(CYCLE.previous));
+        var prevRaw = qpeValueForQuarterStatus(header, row, CYCLE.baseline, get, [
+            "Previous Status (" + CYCLE.baselineShort + ")",
+            "Previous Status (" + CYCLE.baseline + ")",
+            "Previous Status"
+        ].concat(qpeHistoryAliasesForQuarter(CYCLE.baseline)));
+        var priorHistory = previousHistoryMap[id] || {};
+        var priorPrevious = priorHistory[CYCLE.previous] || null;
+        var priorBaseline = priorHistory[CYCLE.baseline] || null;
+        var q2rCurrent = qpeParseRank(get.apply(null, [row].concat(qpeRankAliasesForQuarter(CYCLE.previous))));
+        var q2r = q2rCurrent != null ? q2rCurrent : (priorPrevious && priorPrevious.rank != null ? priorPrevious.rank : null);
+        var q3r = qpeParseRank(get.apply(null, [row].concat(qpeRankAliasesForQuarter(CYCLE.current))));
+        if (!q2sRaw && priorPrevious)
+            q2sRaw = priorPrevious.raw || "";
+        if (!prevRaw && priorBaseline)
+            prevRaw = priorBaseline.raw || "";
         var pt = get(row, "Project Type", "Type");
         /* RANKED = COMMITTED. Per program rule: any initiative with a Q3 rank
            is Committed for Q3, regardless of the literal Status column text
@@ -1956,8 +2052,8 @@ function QpeView(props) {
     var initiatives = useMemo(function () {
         if (data.state.status !== "ready")
             return [];
-        return qpeNormalizePlanning(data.state.planningCsv);
-    }, [data.state.status, data.state.planningCsv]);
+        return qpeNormalizePlanning(data.state.planningCsv, data.state.previousPlanningCsv);
+    }, [data.state.status, data.state.planningCsv, data.state.previousPlanningCsv]);
     var goalsRef = useMemo(function () {
         if (data.state.status !== "ready")
             return {};
@@ -4614,4 +4710,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 
 </script>
 </body>
-</html> 
+</html>
