@@ -112,6 +112,7 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 const CYCLE = {
   current:       "Q3 2026",
   previous:      "Q2 2026",
+  baseline:      "Q4 2025",
   currentShort:  "Q3 '26",
   previousShort: "Q2 '26",
 };
@@ -1156,20 +1157,15 @@ function QpeDrillPanel(props){
         </div>
 
         {(init.q3Rank != null || init.q2Rank != null) && (
-  <div style={{marginBottom:14,display:"flex",gap:6,flexWrap:"wrap"}}>
-    {init.q3Rank != null && (
-      <Chip bg="#FEF5E7" tx="#9A6800" size={10}>★ CEO rank #{init.q3Rank} ({CYCLE.currentShort})</Chip>
-    )}
-    {(init.q3Rank != null || init.q2Rank != null) && (
-  <div style={{marginBottom:14,display:"flex",gap:6,flexWrap:"wrap"}}>
-    {init.q3Rank != null && (
-      <Chip bg="#FEF5E7" tx="#9A6800" size={10}>★ CEO rank #{init.q3Rank} ({CYCLE.currentShort})</Chip>
-    )}
-    {init.q2Rank != null && (
-      <Chip bg="#F4ECF7" tx="#6C3483" size={10}>★ CEO rank #{init.q2Rank} ({CYCLE.previousShort})</Chip>
-    )}
-  </div>
-)}
+          <div style={{marginBottom:14,display:"flex",gap:6,flexWrap:"wrap"}}>
+            {init.q3Rank != null && (
+              <Chip bg="#FEF5E7" tx="#9A6800" size={10}>★ CEO rank #{init.q3Rank} ({CYCLE.currentShort})</Chip>
+            )}
+            {init.q2Rank != null && (
+              <Chip bg="#F4ECF7" tx="#6C3483" size={10}>★ CEO rank #{init.q2Rank} ({CYCLE.previousShort})</Chip>
+            )}
+          </div>
+        )}
 
         {cap ? (
           <div style={{marginBottom:12,padding:"10px 12px",borderRadius:6,background:"#fff",border:"1px solid #ececec"}}>
