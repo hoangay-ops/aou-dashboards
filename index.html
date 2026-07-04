@@ -1160,6 +1160,11 @@ function QpeDrillPanel(props){
     {init.q3Rank != null && (
       <Chip bg="#FEF5E7" tx="#9A6800" size={10}>★ CEO rank #{init.q3Rank} ({CYCLE.currentShort})</Chip>
     )}
+    {(init.q3Rank != null || init.q2Rank != null) && (
+  <div style={{marginBottom:14,display:"flex",gap:6,flexWrap:"wrap"}}>
+    {init.q3Rank != null && (
+      <Chip bg="#FEF5E7" tx="#9A6800" size={10}>★ CEO rank #{init.q3Rank} ({CYCLE.currentShort})</Chip>
+    )}
     {init.q2Rank != null && (
       <Chip bg="#F4ECF7" tx="#6C3483" size={10}>★ CEO rank #{init.q2Rank} ({CYCLE.previousShort})</Chip>
     )}
@@ -1417,6 +1422,19 @@ function QpeMainView(props){
   var initiatives = props.initiatives, onDrill = props.onDrill, onGoalDrill = props.onGoalDrill, goalFocus = props.goalFocus;
   var goalsRef = props.goalsRef || {};
 
+  /* Current-cycle active summary — answers "what's ratified and active
+     right now" using only this-cycle status. Does not depend on
+     cross-cycle history columns, so it works even when the Planning
+     Sheet has been split across separate per-cycle files. */
+  var activeSummary = useMemo(function(){
+    var committed  = initiatives.filter(function(i){return i.status === "Committed";});
+    var proposed   = initiatives.filter(function(i){return i.status === "Proposed";});
+    var backlogged = initiatives.filter(function(i){return i.status === "Backlogged";});
+    var complete   = initiatives.filter(function(i){return i.status === "Complete";});
+    var concept    = initiatives.filter(function(i){return i.status === "Concept";});
+    return {committed:committed, proposed:proposed, backlogged:backlogged, complete:complete, concept:concept};
+  }, [initiatives]);
+
   var cycleStory = useMemo(function(){
     var lastCommittedIds = {}, lastBackloggedIds = {};
     initiatives.forEach(function(i){
@@ -1464,6 +1482,48 @@ function QpeMainView(props){
 
   return (
     <div style={{padding:"20px 28px 32px"}}>
+
+      <section style={{marginBottom:20}}>
+        <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:.8,color:"#666",fontWeight:700,marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+          <span>Ratified & Active — {CYCLE.current}</span>
+          <span style={{flex:1,height:1,background:"#ddd"}}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:10}}>
+          <div onClick={function(){props.onListDrill({label:"Committed — "+CYCLE.current,items:activeSummary.committed,sublabel:"ranked and ratified this cycle",accent:"#1E8449"});}}
+            style={{padding:"12px 14px",background:"#EAF7EF",border:"1px solid #ABEBC6",borderRadius:10,cursor:"pointer"}}>
+            <div style={{fontSize:9.5,color:"#1E8449",fontWeight:700,textTransform:"uppercase",letterSpacing:.4}}>✓ Committed</div>
+            <div style={{fontSize:28,fontWeight:800,color:"#1E8449",lineHeight:1.1,marginTop:3}}>{activeSummary.committed.length}</div>
+            <div style={{fontSize:9.5,color:"#1E8449",opacity:.75,marginTop:2}}>ratified this cycle</div>
+          </div>
+          <div onClick={function(){props.onListDrill({label:"Proposed — "+CYCLE.current,items:activeSummary.proposed,sublabel:"awaiting ratification",accent:"#9A6800"});}}
+            style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10,cursor:"pointer"}}>
+            <div style={{fontSize:9.5,color:"#9A6800",fontWeight:700,textTransform:"uppercase",letterSpacing:.4}}>Proposed</div>
+            <div style={{fontSize:28,fontWeight:800,color:"#9A6800",lineHeight:1.1,marginTop:3}}>{activeSummary.proposed.length}</div>
+            <div style={{fontSize:9.5,color:"#999",marginTop:2}}>not ranked</div>
+          </div>
+          <div onClick={function(){props.onListDrill({label:"Backlogged — "+CYCLE.current,items:activeSummary.backlogged,sublabel:"deferred this cycle",accent:"#7D6608"});}}
+            style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10,cursor:"pointer"}}>
+            <div style={{fontSize:9.5,color:"#7D6608",fontWeight:700,textTransform:"uppercase",letterSpacing:.4}}>Backlogged</div>
+            <div style={{fontSize:28,fontWeight:800,color:"#7D6608",lineHeight:1.1,marginTop:3}}>{activeSummary.backlogged.length}</div>
+            <div style={{fontSize:9.5,color:"#999",marginTop:2}}>deferred</div>
+          </div>
+          <div onClick={function(){props.onListDrill({label:"Complete — "+CYCLE.current,items:activeSummary.complete,sublabel:"closed this cycle",accent:"#1E8449"});}}
+            style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10,cursor:"pointer"}}>
+            <div style={{fontSize:9.5,color:"#1E8449",fontWeight:700,textTransform:"uppercase",letterSpacing:.4}}>Complete</div>
+            <div style={{fontSize:28,fontWeight:800,color:"#1E8449",lineHeight:1.1,marginTop:3}}>{activeSummary.complete.length}</div>
+            <div style={{fontSize:9.5,color:"#999",marginTop:2}}>closed</div>
+          </div>
+          {activeSummary.concept.length > 0 && (
+            <div onClick={function(){props.onListDrill({label:"Concept — "+CYCLE.current,items:activeSummary.concept,sublabel:"exploratory, excluded from capacity",accent:"#6C3483"});}}
+              style={{padding:"12px 14px",background:"#fff",border:"1px solid #ececec",borderRadius:10,cursor:"pointer"}}>
+              <div style={{fontSize:9.5,color:"#6C3483",fontWeight:700,textTransform:"uppercase",letterSpacing:.4}}>Concept</div>
+              <div style={{fontSize:28,fontWeight:800,color:"#6C3483",lineHeight:1.1,marginTop:3}}>{activeSummary.concept.length}</div>
+              <div style={{fontSize:9.5,color:"#999",marginTop:2}}>exploratory</div>
+            </div>
+          )}
+        </div>
+      </section>
+
       <section style={{marginBottom:24}}>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"stretch"}}>
           <div style={{display:"flex",gap:8,flex:"1 1 320px",minWidth:280}}>
