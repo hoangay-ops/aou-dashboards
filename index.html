@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head> 
+<head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>All of Us — Program Dashboards</title>
@@ -1189,6 +1189,21 @@ function qpeValueForQuarterRank(headerRow, row, quarterLabel, fallbackAccessor, 
     }
     return "";
 }
+function qpeValueForAnyRank(headerRow, row) {
+    if (!headerRow || !row)
+        return "";
+    for (var i = 0; i < headerRow.length; i++) {
+        var h = normHeader(headerRow[i]).replace(/[’]/g, "'");
+        if (h.indexOf("rank") === -1)
+            continue;
+        if (h.indexOf("q2") !== -1 || h.indexOf("q1") !== -1 || h.indexOf("q4") !== -1 || h.indexOf("previous") !== -1)
+            continue;
+        var v = row[i];
+        if (v != null && String(v).trim() !== "")
+            return String(v).trim();
+    }
+    return "";
+}
 function qpeSetHistoryEntry(map, id, quarter, raw, rank) {
     if (!id || (!raw && rank == null))
         return;
@@ -1248,8 +1263,6 @@ function qpePrimaryRank(init) {
         return null;
     if (init.q3Rank != null)
         return init.q3Rank;
-    if (init.q2Rank != null)
-        return init.q2Rank;
     return null;
 }
 function compareInitiativeIds(a, b) {
@@ -1268,19 +1281,6 @@ function qpeMatchesUserFilters(init, filters) {
         return false;
     if (filters.goalFocus && filters.goalFocus !== "all" && init.goal !== filters.goalFocus)
         return false;
-    if (filters.statuses && filters.statuses.length > 0 && filters.statuses.indexOf(init.status) === -1)
-        return false;
-    if (filters.newOnly && !init.isNew)
-        return false;
-    var rank = qpePrimaryRank(init);
-    if (filters.rankFilter === "ranked" && rank == null)
-        return false;
-    if (filters.rankFilter === "unranked" && rank != null)
-        return false;
-    if (filters.rankFilter === "top10" && (rank == null || rank > 10))
-        return false;
-    if (filters.rankFilter === "top20" && (rank == null || rank > 20))
-        return false;
     if (filters.search) {
         var q = String(filters.search || "").toLowerCase();
         var haystack = [init.name, init.id, init.objOwner, init.poc, init.obj, init.shortDesc].join(" ").toLowerCase();
@@ -1290,9 +1290,6 @@ function qpeMatchesUserFilters(init, filters) {
     return true;
 }
 function qpeVisibleInDefaultList(init, filters) {
-    filters = filters || {};
-    if (filters.statuses && filters.statuses.length > 0)
-        return true;
     return QPE_DEFAULT_HIDDEN_STATUSES.indexOf(init.status) === -1;
 }
 function qpeCompareItems(a, b, sortMode) {
@@ -1371,8 +1368,11 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
         var priorBaseline = priorHistory[CYCLE.baseline] || null;
         var q2rCurrent = qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.previous, get, qpeRankAliasesForQuarter(CYCLE.previous)));
         var q2r = q2rCurrent != null ? q2rCurrent : (priorPrevious && priorPrevious.rank != null ? priorPrevious.rank : null);
-        var q3rCurrent = qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current)));
-        var q3r = q3rCurrent != null ? q3rCurrent : (priorCurrent && priorCurrent.rank != null ? priorCurrent.rank : null);
+        var q3rRaw = qpeValueForQuarterRank(header, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current));
+        if (!q3rRaw)
+            q3rRaw = qpeValueForAnyRank(header, row);
+        var q3rCurrent = qpeParseRank(q3rRaw);
+        var q3r = q3rCurrent;
         if (!q3sRaw && priorCurrent)
             q3sRaw = priorCurrent.raw || "";
         if (!q2sRaw && priorPrevious)
@@ -1897,7 +1897,7 @@ function QpeMainView(props) {
     Object.keys(goalLanes).forEach(function (k) {
         goalLanes[k].sort(function (a, b) { return qpeCompareItems(a, b, qpeSort); });
     });
-    var rankListItems = initiatives.slice().sort(function (a, b) { return qpeCompareItems(a, b, qpeSort); });
+    var rankListItems = initiatives.filter(function (i) { return qpePrimaryRank(i) != null; }).sort(function (a, b) { return qpeCompareItems(a, b, qpeSort); });
     return (React.createElement("div", { style: { padding: "20px 28px 32px" } },
         React.createElement("section", { style: { marginBottom: 20 } },
             React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#666", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
@@ -1965,13 +1965,14 @@ function QpeMainView(props) {
                     "Rank List \u2014 ",
                     CYCLE.current),
                 React.createElement("span", { style: { flex: 1, height: 1, background: "#ddd" } }),
-                React.createElement("span", { style: { fontSize: 10, color: "#999", letterSpacing: 0, fontWeight: 500, textTransform: "none" } }, "ranked first, unranked last")),
-            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, rankListItems.length === 0 ? (React.createElement("div", { style: { fontSize: 12, color: "#bbb", fontStyle: "italic", padding: "10px 0" } }, "No initiatives match the current filters.")) : rankListItems.map(function (i) {
+                React.createElement("span", { style: { fontSize: 10, color: "#999", letterSpacing: 0, fontWeight: 500, textTransform: "none" } }, "Q3 2026 ranked initiatives")),
+            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, rankListItems.length === 0 ? (React.createElement("div", { style: { fontSize: 12, color: "#bbb", fontStyle: "italic", padding: "10px 0" } }, "No ranked initiatives match the current filters.")) : rankListItems.map(function (i) {
                 var g = GOALS[i.goal];
                 var sc = STATUS_CFG[i.status];
                 var isConceptItem = i.status === "Concept" || /concept/i.test(i.projectType || "");
                 return (React.createElement("div", { key: i.id, onClick: function () { onDrill(i.id); }, style: { padding: "8px 10px", borderRadius: 7, background: "#fff", border: "1px solid #ececec", cursor: "pointer", display: "grid", gridTemplateColumns: "86px 54px 1fr auto", gap: 8, alignItems: "center", minWidth: 0 }, onMouseEnter: function (e) { e.currentTarget.style.background = "#f7fafd"; }, onMouseLeave: function (e) { e.currentTarget.style.background = "#fff"; } },
-                    React.createElement("div", { style: { display: "flex", justifyContent: "flex-start" } }, qpePrimaryRank(i) != null ? React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 9 }) : React.createElement(Chip, { bg: "#F4F6F7", tx: "#7F8C8D", size: 9 }, "Unranked")),
+                    React.createElement("div", { style: { display: "flex", justifyContent: "flex-start" } },
+                        React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 9 })),
                     React.createElement(Chip, { bg: g ? g.color + "33" : "#eee", tx: g ? goalTextColor(i.goal) : "#888", size: 9 },
                         "G",
                         g ? g.num : "?"),
@@ -2024,9 +2025,6 @@ function QpeMainView(props) {
 function QpeView(props) {
     var data = props.data;
     var [goalFocus, setGoalFocus] = useState("all");
-    var [fStatus, setFStatus] = useState([]);
-    var [newOnly, setNewOnly] = useState(false);
-    var [rankFilter, setRankFilter] = useState("all");
     var [qpeSort, setQpeSort] = useState("id");
     var [qpeDisplay, setQpeDisplay] = useState("goal");
     var [search, setSearch] = useState("");
@@ -2068,8 +2066,8 @@ function QpeView(props) {
         }
     }, [props.selectedInitiativeId, initiatives]);
     var qpeFilterState = useMemo(function () {
-        return { goalFocus: goalFocus, statuses: fStatus, newOnly: newOnly, rankFilter: rankFilter, search: search };
-    }, [goalFocus, fStatus, newOnly, rankFilter, search]);
+        return { goalFocus: goalFocus, search: search };
+    }, [goalFocus, search]);
     var summaryInitiatives = useMemo(function () {
         return initiatives.filter(function (i) { return qpeMatchesUserFilters(i, qpeFilterState); });
     }, [initiatives, qpeFilterState]);
@@ -2079,16 +2077,10 @@ function QpeView(props) {
             .filter(function (i) { return qpeVisibleInDefaultList(i, qpeFilterState); })
             .sort(function (a, b) { return qpeCompareItems(a, b, qpeSort); });
     }, [initiatives, qpeFilterState, qpeSort]);
-    var availableStatuses = useMemo(function () {
-        return QPE_STATUS_KEYS.filter(function (s) { return initiatives.some(function (i) { return i.status === s; }); });
-    }, [initiatives]);
     var drillInit = drill ? initiatives.find(function (x) { return x.id === drill; }) : null;
-    var anyFilter = goalFocus !== "all" || fStatus.length > 0 || newOnly || rankFilter !== "all" || (search !== "" && search !== null);
+    var anyFilter = goalFocus !== "all" || (search !== "" && search !== null);
     function clearAll() {
         setGoalFocus("all");
-        setFStatus([]);
-        setNewOnly(false);
-        setRankFilter("all");
         setSearch("");
     }
     if (data.state.status === "loading") {
@@ -2116,14 +2108,6 @@ function QpeView(props) {
                     g.num,
                     ": ",
                     g.name); })),
-            React.createElement(MultiSelect, { label: "Status", options: availableStatuses, selected: fStatus, onChange: setFStatus }),
-            React.createElement("button", { onClick: function () { setNewOnly(!newOnly); }, title: "Show only initiatives flagged NEW in the planning sheet", style: { fontSize: 11.5, padding: "5px 11px", border: "1px solid " + (newOnly ? "#9A6800" : "#dcdcdc"), borderRadius: 18, background: newOnly ? "#FEF5E7" : "#fff", color: newOnly ? "#9A6800" : "#555", cursor: "pointer", fontWeight: newOnly ? 600 : 400 } }, "\uD83D\uDCE5 New only"),
-            React.createElement("select", { "aria-label": "Filter QPE initiatives by rank", value: rankFilter, onChange: function (e) { setRankFilter(e.target.value); }, title: "Filter initiatives by Q3 rank", style: { fontSize: 11.5, padding: "5px 10px", border: "1px solid " + (rankFilter !== "all" ? "#2471A3" : "#dcdcdc"), borderRadius: 18, background: rankFilter !== "all" ? "#EBF5FB" : "#fff", color: rankFilter !== "all" ? "#2471A3" : "#555", fontWeight: rankFilter !== "all" ? 600 : 400 } },
-                React.createElement("option", { value: "all" }, "All ranks"),
-                React.createElement("option", { value: "ranked" }, "Ranked only"),
-                React.createElement("option", { value: "unranked" }, "Unranked only"),
-                React.createElement("option", { value: "top10" }, "Top 10"),
-                React.createElement("option", { value: "top20" }, "Top 20")),
             React.createElement("select", { "aria-label": "Sort QPE initiatives", value: qpeSort, onChange: function (e) { setQpeSort(e.target.value); }, title: "Sort visible initiatives", style: { fontSize: 11.5, padding: "5px 10px", border: "1px solid " + (qpeSort !== "id" ? "#2471A3" : "#dcdcdc"), borderRadius: 18, background: qpeSort !== "id" ? "#EBF5FB" : "#fff", color: qpeSort !== "id" ? "#2471A3" : "#555", fontWeight: qpeSort !== "id" ? 600 : 400 } },
                 React.createElement("option", { value: "id" }, "Sort: ID"),
                 React.createElement("option", { value: "rank-asc" }, "Sort: Rank \u2191"),
@@ -2137,7 +2121,7 @@ function QpeView(props) {
             anyFilter && React.createElement("button", { onClick: clearAll, style: { fontSize: 11.5, background: "none", border: "none", color: "#C0392B", cursor: "pointer", fontWeight: 500 } }, "\u2715 Clear"),
             React.createElement("div", { style: { flex: 1 } }),
             React.createElement("input", { "aria-label": "Search QPE initiatives", value: search, onChange: function (e) { setSearch(e.target.value); }, placeholder: "\uD83D\uDD0D Search\u2026", style: { fontSize: 12, padding: "5px 11px", border: "1px solid #dcdcdc", borderRadius: 18, width: 200 } }),
-            React.createElement("span", { title: "Showing initiatives after active filters. Complete and Backlogged are hidden until selected in Status.", style: { fontSize: 11, padding: "3px 9px", borderRadius: 20, background: "#fff", border: "1px solid #ececec", color: "#888" } },
+            React.createElement("span", { title: "Showing initiatives after active filters. Complete and Backlogged are hidden from the default list.", style: { fontSize: 11, padding: "3px 9px", borderRadius: 20, background: "#fff", border: "1px solid #ececec", color: "#888" } },
                 React.createElement("strong", { style: { color: "#333" } }, filtered.length),
                 " of ",
                 initiatives.length,
@@ -2159,23 +2143,12 @@ function QpeView(props) {
             : React.createElement(QpeListPanel, { list: listDrill, label: listDrill.label, sublabel: listDrill.sublabel, accent: listDrill.accent, onItemDrill: function (id) { setListDrill(null); setDrill(id); }, onClose: function () { setListDrill(null); } })),
         React.createElement(ViewGuide, { open: guideOpen, onClose: function () { setGuideOpen(false); }, title: "How to use the Quarterly Planning Dashboard", intro: "Read the cycle story, inspect goal lanes, and open initiative details from one planning view.", cards: [
                 { icon: "↔", title: "Cycle story", color: "#2471A3", bg: "#F4FAFF",
-                    body: React.createElement(React.Fragment, null,
-                        "The top tiles compare last-cycle outcomes with this-cycle candidates. Use ",
-                        React.createElement("strong", null, "Completed"),
-                        ", ",
-                        React.createElement("strong", null, "Backlogged"),
-                        ", ",
-                        React.createElement("strong", null, "Ongoing"),
-                        ", ",
-                        React.createElement("strong", null, "New Proposed"),
-                        ", and ",
-                        React.createElement("strong", null, "Revived"),
-                        " tiles to open focused initiative lists.") },
+                    body: React.createElement(React.Fragment, null, "The top tiles summarize the current QPE status. Prior-cycle activity is hidden in the Past QPE activity accordion.") },
                 { icon: "🎯", title: "Goal lanes", color: "#6C3483", bg: "#FBF7FF",
                     body: React.createElement(React.Fragment, null, "Goal lanes group initiatives by strategic goal. Click a lane header to open goal details, including objectives and owners; click an initiative row to open its drill-down.") },
                 { icon: "🔎", title: "Filters & search", color: "#117A65", bg: "#F4FFFB",
                     body: React.createElement(React.Fragment, null,
-                        "Use Focus, Status, New only, Rank, and Search to narrow the visible planning set. ",
+                        "Use Focus and Search to narrow the visible planning set. Use Sort and View to switch between goal lanes and the Q3 2026 rank list. ",
                         React.createElement("strong", null, "Clear"),
                         " resets the current filters.") },
                 { icon: "📄", title: "Initiative drill-down", color: "#B3541E", bg: "#FFF8F2",
@@ -2227,9 +2200,8 @@ function QpeView(props) {
                         React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483" }, "Concept"),
                         " exploratory, excluded from capacity"),
                     React.createElement("span", null,
-                        React.createElement("strong", { style: { color: "#9A6800" } }, "\u2605 #N"),
-                        " CEO-ratified rank from ",
-                        CYCLE.previous)))
+                        React.createElement("strong", { style: { color: "#9A6800" } }, "Rank #N"),
+                        " CEO-ratified Q3 2026 ranking")))
             } })));
 }
 /* ════════════════════════════════════════════════════════════════════════════
