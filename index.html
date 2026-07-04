@@ -1928,8 +1928,20 @@ function QpeMainView(props) {
                     React.createElement("div", { style: { fontSize: 9.5, color: "#6C3483", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Concept"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#6C3483", lineHeight: 1.1, marginTop: 3 } }, activeSummary.concept.length),
                     React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "exploratory"))))),
-        React.createElement("details", { style: { marginBottom: 24, background: "#fff", border: "1px solid #ececec", borderRadius: 10, overflow: "hidden" } },
-            React.createElement("summary", { style: { cursor: "pointer", padding: "10px 14px", background: "#fafbfc", fontSize: 11, textTransform: "uppercase", letterSpacing: .65, color: "#607080", fontWeight: 800, display: "flex", alignItems: "center", gap: 8, listStyle: "none" } },
+        (function () {
+            var newThisCycle = summaryInitiatives.filter(function (i) { return i.isNew; });
+            if (newThisCycle.length === 0) return null;
+            return React.createElement("section", { style: { marginBottom: 24 } },
+                React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#9A6800", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("span", null, "\uD83D\uDCE5 New This Cycle \u2014 " + CYCLE.current),
+                    React.createElement("span", { style: { flex: 1, height: 1, background: "#F4D03F" } }),
+                    React.createElement("span", { style: { fontSize: 10, color: "#aaa", letterSpacing: 0, fontWeight: 400, textTransform: "none" } }, "(" + newThisCycle.length + ")")),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 } },
+                    newThisCycle.map(function (n) {
+                        return React.createElement(QpeInitCard, { key: n.id, init: n, onDrill: onDrill, revivedFlag: false });
+                    })));
+        })(),
+        React.createElement("details", { style: { marginBottom: 24, background: "#fff", border: "1px solid #ececec", borderRadius: 10, overflow: "hidden" } },            React.createElement("summary", { style: { cursor: "pointer", padding: "10px 14px", background: "#fafbfc", fontSize: 11, textTransform: "uppercase", letterSpacing: .65, color: "#607080", fontWeight: 800, display: "flex", alignItems: "center", gap: 8, listStyle: "none" } },
                 React.createElement("span", null, "Past QPE activity"),
                 React.createElement("span", { style: { fontSize: 10, color: "#8a98a8", letterSpacing: 0, textTransform: "none", fontWeight: 500 } },
                     cycleStory.completed.length + cycleStory.backlogged.length + cycleStory.ongoing.length + cycleStory.newProposed.length + cycleStory.revived.length,
