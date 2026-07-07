@@ -3882,7 +3882,7 @@ function rmPrintRoadmap() {
             todayLine = "<div class='today' style='left:" + tp + "%'></div>";
         }
     }
-    var html = "<div class='print-title'><div class='print-org'>NIH · <em>All of Us</em> Research Program</div><div class='print-main'>Program Roadmap</div></div><div class='snapshot'><div class='phead'><div class='plabel head-label'></div><div class='ptimeline head-time'><div class='qgrid' style='grid-template-columns:repeat(" + monthCount + ",1fr)'>" + quarterHeader() + "</div><div class='mgrid' style='grid-template-columns:repeat(" + monthCount + ",1fr)'>" + monthHeader() + "</div>" + todayLine + "</div></div>" + rows + "</div>";
+    var html = "<div class='print-title'><div class='print-org'>NIH · <em>All of Us</em> Research Program · For Internal Use Only</div><div class='print-main'>Program Roadmap</div></div><div class='snapshot'><div class='phead'><div class='plabel head-label'></div><div class='ptimeline head-time'><div class='qgrid' style='grid-template-columns:repeat(" + monthCount + ",1fr)'>" + quarterHeader() + "</div><div class='mgrid' style='grid-template-columns:repeat(" + monthCount + ",1fr)'>" + monthHeader() + "</div>" + todayLine + "</div></div>" + rows + "</div>";
     var printWin = window.open("about:blank", "_blank");
     if (!printWin) {
         alert("Print window was blocked. Please allow pop-ups for this Google Site, then click Print again.");
@@ -4636,7 +4636,8 @@ function App() {
                         "NIH \u00B7 ",
                         React.createElement(AoU, null),
                         " Research Program \u00B7 ",
-                        CYCLE.current),
+                        CYCLE.current,
+    " \u00B7 For Internal Use Only"),
                     React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#111", lineHeight: 1.2, letterSpacing: -0.2 } }, IS_ROADMAP_ONLY ? "Program Roadmap" : "Program Dashboards")),
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" } },
                     data.state.status === "ready" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#EAF7EF", color: "#1E8449", fontWeight: 600 } },
