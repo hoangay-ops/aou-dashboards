@@ -3957,6 +3957,7 @@ function RoadmapDrillContent(props) {
                 return cfg ? React.createElement("span", { key: a, style: { fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: cfg.bg, color: cfg.tx } }, cfg.label) : null;
             })),
             (function () {
+                if (IS_ROADMAP_ONLY) return null;
                 var teams = noCapacityTeams(expItem.id);
                 if (!teams)
                     return null;
@@ -4350,7 +4351,7 @@ function RoadmapView(props) {
                 React.createElement("input", { style: { fontSize: 12, padding: "5px 11px", border: "1px solid #dcdcdc", borderRadius: 18, width: 240, maxWidth: "36vw" }, placeholder: "\uD83D\uDD0D  Search\u2026", value: search, onChange: function (e) { setSearch(e.target.value); } })),
             React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" } },
                 React.createElement(HelpButton, { open: guideOpen, onClick: function () { setGuideOpen(true); } }),
-                flaggedCount > 0 && (React.createElement("button", { onClick: function () { setFlaggedOnly(!flaggedOnly); }, title: flaggedOnly ? "Show all initiatives" : "Show only initiatives with one or more teams flagging 'No Capacity Remaining'", style: {
+                !IS_ROADMAP_ONLY && flaggedCount > 0 && (React.createElement("button", { onClick: function () { setFlaggedOnly(!flaggedOnly); }, title: flaggedOnly ? "Show all initiatives" : "Show only initiatives with one or more teams flagging 'No Capacity Remaining'", style: {
                         fontSize: 11.5, padding: "4px 11px",
                         border: "1px solid " + (flaggedOnly ? "#B7950B" : "#F5D27A"),
                         borderRadius: 6,
@@ -4360,8 +4361,7 @@ function RoadmapView(props) {
                         display: "inline-flex", alignItems: "center", gap: 6,
                     } },
                     React.createElement("span", { style: { fontSize: 14, lineHeight: 1, color: "#B7950B", fontWeight: 400 } }, "\u26A0"),
-                    flaggedOnly ? "Showing capacity warnings (" + flaggedCount + ") · click to clear" : "View capacity warnings (" + flaggedCount + ")")),
-                React.createElement("button", { onClick: rmPrintRoadmap, title: "Print the currently filtered roadmap", style: { fontSize: 11.5, padding: "4px 11px", border: "1px solid #C8DCF0", borderRadius: 6, background: "#EBF5FB", color: "#2471A3", cursor: "pointer", fontWeight: 500 } }, "Print"),
+                    flaggedOnly ? "Showing capacity warnings (" + flaggedCount + ") · click to clear" : "View capacity warnings (" + flaggedCount + ")")),                React.createElement("button", { onClick: rmPrintRoadmap, title: "Print the currently filtered roadmap", style: { fontSize: 11.5, padding: "4px 11px", border: "1px solid #C8DCF0", borderRadius: 6, background: "#EBF5FB", color: "#2471A3", cursor: "pointer", fontWeight: 500 } }, "Print"),
                 React.createElement("button", { onClick: reset, style: { fontSize: 11.5, padding: "4px 11px", border: "1px solid #e0e0e0", borderRadius: 6, background: "#fff", cursor: "pointer" } }, "Reset"),
                 React.createElement("span", { style: { fontSize: 11, color: "#aaa" } }, "Showing"),
                 React.createElement("span", { style: { fontSize: 13, fontWeight: 700, color: "#333" } }, filtered.length),
@@ -4489,8 +4489,7 @@ function RoadmapView(props) {
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 } },
                                             showAud && RM_TYPE_SHORT[item.type] && (React.createElement("span", { title: "Audience: " + item.type, style: { fontSize: 8, fontWeight: 700, width: 16, height: 16, borderRadius: 3, display: "inline-flex", alignItems: "center", justifyContent: "center", background: RM_TYPE_BG[item.type] || "#eee", color: RM_TYPE_COLOR[item.type] || "#666", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", cursor: "help", flexShrink: 0 } }, RM_TYPE_SHORT[item.type])),
                                             React.createElement("span", { style: { fontSize: 12.5, fontWeight: 650, color: "#222", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "17px", flex: "1 1 auto", minWidth: 0 }, title: renderText(item.name) }, renderText(item.name)),
-                                            showAud && capacityFlagged && (IS_ROADMAP_ONLY ? (React.createElement("span", { title: noCapTeams.length + " team" + (noCapTeams.length === 1 ? "" : "s") + " flagged no capacity for this initiative: " + noCapTeams.map(function (t) { return t.name; }).join(", "), style: { fontSize: 14, lineHeight: 1, color: "#B7950B", fontWeight: 400, flexShrink: 0, cursor: "help" } }, "\u26A0")) : (React.createElement("span", { onClick: function (e) { e.stopPropagation(); props.onNavigateView("capacity", item.id); }, title: noCapTeams.length + " team" + (noCapTeams.length === 1 ? "" : "s") + " flagged no capacity: " + noCapTeams.map(function (t) { return t.name; }).join(", ") + " — click to view in Capacity", style: { fontSize: 14, lineHeight: 1, color: "#B7950B", fontWeight: 400, flexShrink: 0, cursor: "pointer" } }, "\u26A0")))),
-                                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5, minHeight: 14, lineHeight: "14px", overflow: "hidden" } },
+showAud && capacityFlagged && !IS_ROADMAP_ONLY && (React.createElement("span", { onClick: function (e) { e.stopPropagation(); props.onNavigateView("capacity", item.id); }, title: noCapTeams.length + " team" + (noCapTeams.length === 1 ? "" : "s") + " flagged no capacity: " + noCapTeams.map(function (t) { return t.name; }).join(", ") + " — click to view in Capacity", style: { fontSize: 14, lineHeight: 1, color: "#B7950B", fontWeight: 400, flexShrink: 0, cursor: "pointer" } }, "\u26A0")),                                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5, minHeight: 14, lineHeight: "14px", overflow: "hidden" } },
                                             showAud && rmInitStatusDisplay(item) && (React.createElement("span", { title: "Planning status: " + rmInitStatusDisplay(item).label, style: { fontSize: 8.5, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: rmInitStatusDisplay(item).bg, color: rmInitStatusDisplay(item).tx, flexShrink: 0, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", letterSpacing: .3, lineHeight: 1, textTransform: "uppercase" } }, rmInitStatusDisplay(item).label)),
                                             depMode && rmRelatedDepIds(item).length > 0 && (React.createElement("span", { title: "Has dependencies", style: { fontSize: 8.5, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: "#FEF9E7", color: "#7D6608", flexShrink: 0, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1 } }, "\u2194")),
                                             rs.label && (React.createElement("span", { title: "Dependency role", style: { fontSize: 8.5, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: rs.bg !== "transparent" ? rs.bg : "#f5f5f5", color: rs.color, flexShrink: 0, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", letterSpacing: .3, lineHeight: 1, textTransform: "uppercase" } }, rs.label))))));
@@ -4540,11 +4539,7 @@ function RoadmapView(props) {
             React.createElement(RoadmapDrillContent, { expItem: expItem, expMs: expMs, showAud: showAud, noCapacityTeams: noCapacityTeams, depGraph: depGraph, allInit: allInit, selectInitiative: selectInitiative, onNavigateView: props.onNavigateView, psiUrlMap: props.psiUrlMap, embedded: true }))),
         tooltip && (React.createElement("div", { style: { position: "fixed", left: tooltip.x + 12, top: tooltip.y - 10, zIndex: 2000, background: "#1a1a2e", color: "#fff", padding: "8px 12px", borderRadius: 8, fontSize: 11, pointerEvents: "none", boxShadow: "0 4px 12px rgba(0,0,0,.25)", maxWidth: 240 } },
             React.createElement("div", { style: { fontWeight: 600, marginBottom: 2 } }, tooltip.name),
-            React.createElement("div", { style: { opacity: .7 } },
-                tooltip.date,
-                " \u00B7 ",
-                tooltip.icon === "star" ? "Tech Ready" : "Comms",
-                tooltip.cat ? " · " + tooltip.cat : ""))),
+            React.createElement("div", { style: { opacity: .7 } }, tooltip.date))),
         React.createElement(ViewGuide, { open: guideOpen, onClose: function () { setGuideOpen(false); }, title: "How to use the Program Roadmap", intro: "Read the timeline from left to right. Bars represent initiatives, milestone markers show Tech Ready and Comms events, and the red line marks today.", launchGlossary: "https://docs.google.com/document/d/1hl_bN343i1azTm8nUwIQQs932pzeJXF3h7aKajR7fZE/edit?tab=t.0#heading=h.bttfzqlrvm2p", cards: [
                 { icon: "📅", title: "Timeline", color: "#2471A3", bg: "#F4FAFF",
                     body: React.createElement(React.Fragment, null, "Quarters and months run from left to right. Colored bars show initiative duration. A red line marks today, and the current month is highlighted blue.") },
