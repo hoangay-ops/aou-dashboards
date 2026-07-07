@@ -3727,12 +3727,12 @@ function rmMilestoneDisplayType(m) {
     var cat = String((m && m.cat) || "").toLowerCase();
     var icon = String((m && m.icon) || "").toLowerCase();
     if (icon === "diamond")
-        return "Tech Ready";
+        return "◆";
     if (icon === "star")
-        return "Comms";
+        return "★";
     if (cat.indexOf("tech") !== -1)
-        return "Tech Ready";
-    return "Comms";
+        return "◆";
+    return "★";
 }
 function RmGridLines(props) {
     return React.createElement("div", { style: { position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", display: "flex", overflow: "hidden" } }, Array.from({ length: props.n }).map(function (_, i) {
@@ -4358,8 +4358,8 @@ function RoadmapView(props) {
             React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                 React.createElement("span", { style: { fontSize: 9.5, textTransform: "uppercase", color: "#bbb", fontWeight: 700, letterSpacing: .05 } }, "Milestones"),
                 React.createElement(RmSegBtn, { active: milestoneView === "both", onClick: function () { setMilestoneView("both"); } }, "Both"),
-                React.createElement(RmSegBtn, { active: milestoneView === "tech", onClick: function () { setMilestoneView("tech"); } }, "\u25C6 Tech Ready"),
-                React.createElement(RmSegBtn, { active: milestoneView === "comms", onClick: function () { setMilestoneView("comms"); } }, "\u2605 Comms")),
+                React.createElement(RmSegBtn, { active: milestoneView === "tech", onClick: function () { setMilestoneView("tech"); } }, "\u25C6"),
+                React.createElement(RmSegBtn, { active: milestoneView === "comms", onClick: function () { setMilestoneView("comms"); } }, "\u2605")),
             React.createElement(RmSep, null),
             React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                 React.createElement(RmTog, { on: depMode, onClick: function () { setDepMode(!depMode); if (depMode)
@@ -4379,12 +4379,10 @@ function RoadmapView(props) {
                 })),
             React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", paddingRight: 22, marginRight: 22, borderRight: "1px solid #ebebeb" } },
                 React.createElement("span", { style: { fontSize: 9, textTransform: "uppercase", color: "#bbb", fontWeight: 700, letterSpacing: .5 } }, "Markers"),
-                React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                    React.createElement(RmDiamondIcon, { sz: 13 }),
-                    React.createElement("span", null, "Tech Ready")),
-                React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                    React.createElement(RmStarIcon, { sz: 13 }),
-                    React.createElement("span", null, "Comms"))),
+                React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 }, title: "Diamond milestone" },
+                    React.createElement(RmDiamondIcon, { sz: 13 })),
+                React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 }, title: "Star milestone" },
+                    React.createElement(RmStarIcon, { sz: 13 }))),
             React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } },
                 React.createElement("span", { style: { fontSize: 9, textTransform: "uppercase", color: "#bbb", fontWeight: 700, letterSpacing: .5 } }, "Badges"),
                 React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 5 } },
@@ -4495,18 +4493,16 @@ function RoadmapView(props) {
             React.createElement("div", { style: { fontWeight: 600, marginBottom: 2 } }, tooltip.name),
             React.createElement("div", { style: { opacity: .7 } },
                 tooltip.date,
-                " \u00B7 ",
-                tooltip.icon === "diamond" ? "Tech Ready" : "Comms",
                 tooltip.cat ? " · " + tooltip.cat : ""))),
-        React.createElement(ViewGuide, { open: guideOpen, onClose: function () { setGuideOpen(false); }, title: "How to use the Program Roadmap", intro: "Read the timeline from left to right. Bars represent initiatives, milestone markers show Tech Ready and Comms events, and the red line marks today.", launchGlossary: "https://docs.google.com/document/d/1hl_bN343i1azTm8nUwIQQs932pzeJXF3h7aKajR7fZE/edit?tab=t.0#heading=h.bttfzqlrvm2p", cards: [
+        React.createElement(ViewGuide, { open: guideOpen, onClose: function () { setGuideOpen(false); }, title: "How to use the Program Roadmap", intro: "Read the timeline from left to right. Bars represent initiatives, milestone markers show key events, and the red line marks today.", launchGlossary: "https://docs.google.com/document/d/1hl_bN343i1azTm8nUwIQQs932pzeJXF3h7aKajR7fZE/edit?tab=t.0#heading=h.bttfzqlrvm2p", cards: [
                 { icon: "📅", title: "Timeline", color: "#2471A3", bg: "#F4FAFF",
                     body: React.createElement(React.Fragment, null, "Quarters and months run from left to right. Colored bars show initiative duration. A red line marks today, and the current month is highlighted blue.") },
                 { icon: null, title: "Milestones", color: "#F5A800", bg: "#FFFAF0",
                     body: React.createElement(React.Fragment, null,
                         React.createElement("span", { style: { color: "#F5A800", fontWeight: 800 } }, "\u25C6"),
-                        " Tech Ready and ",
+                        " and ",
                         React.createElement("span", { style: { color: "#F5A800", fontWeight: 800 } }, "\u2605"),
-                        " Comms markers appear on the parent initiative timeline. Hover over a marker to see its date and category, or use the milestone filter to show one type at a time.") },
+                        " markers appear on the parent initiative timeline. Hover over a marker to see its date and category, or use the milestone filter to show one type at a time.") },
                 { icon: "↔", title: "Dependency mode", color: "#7D6608", bg: "#FFF9EC",
                     body: React.createElement(React.Fragment, null,
                         "Turn on ",
