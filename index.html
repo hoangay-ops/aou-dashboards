@@ -3868,7 +3868,7 @@ function rmPrintRoadmap() {
             todayLine = "<div class='today' style='left:" + tp + "%'></div>";
         }
     }
-    var html = "<div class='print-title'><div class='print-org'>NIH · <em>All of Us</em> Research Program</div><div class='print-main'>Program Roadmap</div></div><div class='snapshot'><div class='phead'><div class='plabel head-label'></div><div class='ptimeline head-time'><div class='qgrid' style='grid-template-columns:repeat(" + monthCount + ",1fr)'>" + quarterHeader() + "</div><div class='mgrid' style='grid-template-columns:repeat(" + monthCount + ",1fr)'>" + monthHeader() + "</div>" + todayLine + "</div></div>" + rows + "</div>";
+    var html = "<div class='print-title'><div class='print-org'>NIH · <em>All of Us</em> Research Program · <span style='color:#C0392B;font-weight:800'>For Internal Use Only</span></div><div class='print-main'>Program Roadmap</div></div><div class='snapshot'><div class='phead'><div class='plabel head-label'></div><div class='ptimeline head-time'><div class='qgrid' style='grid-template-columns:repeat(" + monthCount + ",1fr)'>" + quarterHeader() + "</div><div class='mgrid' style='grid-template-columns:repeat(" + monthCount + ",1fr)'>" + monthHeader() + "</div>" + todayLine + "</div></div>" + rows + "</div>";
     var printWin = window.open("about:blank", "_blank");
     if (!printWin) {
         alert("Print window was blocked. Please allow pop-ups for this Google Site, then click Print again.");
@@ -3942,27 +3942,6 @@ function RoadmapDrillContent(props) {
                 var cfg = RM_AWARDEE_CFG[a];
                 return cfg ? React.createElement("span", { key: a, style: { fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: cfg.bg, color: cfg.tx } }, cfg.label) : null;
             })),
-            (function () {
-                var teams = noCapacityTeams(expItem.id);
-                if (!teams)
-                    return null;
-                return (React.createElement("div", { style: { marginBottom: 10, padding: "10px 12px", borderRadius: 6, background: "#FDECEA", border: "1px solid #E6B0AA", borderLeft: "3px solid #C0392B" } },
-                    React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 } },
-                        React.createElement("div", { style: { fontSize: 9.5, textTransform: "uppercase", letterSpacing: .5, color: "#922b21", fontWeight: 800 } },
-                            "Capacity Flag (",
-                            teams.length,
-                            ")"),
-                        React.createElement("button", { onClick: function () { props.onNavigateView("capacity", expItem.id); }, style: { fontSize: 10, padding: "3px 8px", border: "1px solid #C0392B", borderRadius: 4, background: "#fff", color: "#922b21", cursor: "pointer", fontWeight: 600 } }, "view in Capacity \u2192")),
-                    React.createElement("div", { style: { fontSize: 11.5, color: "#7B241C", lineHeight: 1.5 } },
-                        teams.length === 1 ? "1 team has" : teams.length + " teams have",
-                        " flagged \"No Capacity Remaining\" for this initiative:"),
-                    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 2, marginTop: 6 } }, teams.map(function (t, i) {
-                        return React.createElement("div", { key: i, style: { fontSize: 11, padding: "3px 7px", background: "#fff", border: "1px solid #E6B0AA", borderRadius: 4, color: "#7B241C", display: "flex", alignItems: "center", gap: 6 } },
-                            React.createElement("span", { style: { color: "#C0392B", fontWeight: 800 } }, "\u2717"),
-                            React.createElement("span", { style: { fontWeight: 600, flex: 1 } }, t.name),
-                            t.notes && React.createElement("span", { style: { fontSize: 10, color: "#888", fontStyle: "italic" } }, t.notes));
-                    }))));
-            })(),
             (rmRelatedDepIds(expItem).length > 0 || (depGraph.downstream[expItem.id] && depGraph.downstream[expItem.id].length) || expItem.dependencyType || expItem.requiredBy || expItem.impactIfLate || expItem.mitigationNotes) && (React.createElement("div", { style: { marginBottom: 10, padding: "10px 12px", borderRadius: 6, background: "#FEF9E7", border: "1px solid #F5E6A8", borderLeft: "3px solid #B7950B" } },
                 React.createElement("div", { style: { fontSize: 9.5, textTransform: "uppercase", letterSpacing: .5, color: "#7D6608", fontWeight: 800, marginBottom: 8 } }, "Dependency impact"),
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 10px", fontSize: 11.5, color: "#555", marginBottom: 8 } },
@@ -4336,17 +4315,6 @@ function RoadmapView(props) {
                 React.createElement("input", { style: { fontSize: 12, padding: "5px 11px", border: "1px solid #dcdcdc", borderRadius: 18, width: 240, maxWidth: "36vw" }, placeholder: "\uD83D\uDD0D  Search\u2026", value: search, onChange: function (e) { setSearch(e.target.value); } })),
             React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" } },
                 React.createElement(HelpButton, { open: guideOpen, onClick: function () { setGuideOpen(true); } }),
-                flaggedCount > 0 && (React.createElement("button", { onClick: function () { setFlaggedOnly(!flaggedOnly); }, title: flaggedOnly ? "Show all initiatives" : "Show only initiatives with one or more teams flagging 'No Capacity Remaining'", style: {
-                        fontSize: 11.5, padding: "4px 11px",
-                        border: "1px solid " + (flaggedOnly ? "#B7950B" : "#F5D27A"),
-                        borderRadius: 6,
-                        background: flaggedOnly ? "#FEF3C7" : "#FFFBEB",
-                        color: "#7D6008",
-                        cursor: "pointer", fontWeight: 500,
-                        display: "inline-flex", alignItems: "center", gap: 6,
-                    } },
-                    React.createElement("span", { style: { fontSize: 14, lineHeight: 1, color: "#B7950B", fontWeight: 400 } }, "\u26A0"),
-                    flaggedOnly ? "Showing capacity warnings (" + flaggedCount + ") · click to clear" : "View capacity warnings (" + flaggedCount + ")")),
                 React.createElement("button", { onClick: rmPrintRoadmap, title: "Print the currently filtered roadmap", style: { fontSize: 11.5, padding: "4px 11px", border: "1px solid #C8DCF0", borderRadius: 6, background: "#EBF5FB", color: "#2471A3", cursor: "pointer", fontWeight: 500 } }, "Print"),
                 React.createElement("button", { onClick: reset, style: { fontSize: 11.5, padding: "4px 11px", border: "1px solid #e0e0e0", borderRadius: 6, background: "#fff", cursor: "pointer" } }, "Reset"),
                 React.createElement("span", { style: { fontSize: 11, color: "#aaa" } }, "Showing"),
@@ -4474,8 +4442,7 @@ function RoadmapView(props) {
                                     React.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 } },
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 } },
                                             showAud && RM_TYPE_SHORT[item.type] && (React.createElement("span", { title: "Audience: " + item.type, style: { fontSize: 8, fontWeight: 700, width: 16, height: 16, borderRadius: 3, display: "inline-flex", alignItems: "center", justifyContent: "center", background: RM_TYPE_BG[item.type] || "#eee", color: RM_TYPE_COLOR[item.type] || "#666", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", cursor: "help", flexShrink: 0 } }, RM_TYPE_SHORT[item.type])),
-                                            React.createElement("span", { style: { fontSize: 12.5, fontWeight: 650, color: "#222", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "17px", flex: "1 1 auto", minWidth: 0 }, title: renderText(item.name) }, renderText(item.name)),
-                                            showAud && capacityFlagged && (IS_ROADMAP_ONLY ? (React.createElement("span", { title: noCapTeams.length + " team" + (noCapTeams.length === 1 ? "" : "s") + " flagged no capacity for this initiative: " + noCapTeams.map(function (t) { return t.name; }).join(", "), style: { fontSize: 14, lineHeight: 1, color: "#B7950B", fontWeight: 400, flexShrink: 0, cursor: "help" } }, "\u26A0")) : (React.createElement("span", { onClick: function (e) { e.stopPropagation(); props.onNavigateView("capacity", item.id); }, title: noCapTeams.length + " team" + (noCapTeams.length === 1 ? "" : "s") + " flagged no capacity: " + noCapTeams.map(function (t) { return t.name; }).join(", ") + " — click to view in Capacity", style: { fontSize: 14, lineHeight: 1, color: "#B7950B", fontWeight: 400, flexShrink: 0, cursor: "pointer" } }, "\u26A0")))),
+                                            React.createElement("span", { style: { fontSize: 12.5, fontWeight: 650, color: "#222", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "17px", flex: "1 1 auto", minWidth: 0 }, title: renderText(item.name) }, renderText(item.name))),
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5, minHeight: 14, lineHeight: "14px", overflow: "hidden" } },
                                             showAud && rmInitStatusDisplay(item) && (React.createElement("span", { title: "Planning status: " + rmInitStatusDisplay(item).label, style: { fontSize: 8.5, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: rmInitStatusDisplay(item).bg, color: rmInitStatusDisplay(item).tx, flexShrink: 0, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", letterSpacing: .3, lineHeight: 1, textTransform: "uppercase" } }, rmInitStatusDisplay(item).label)),
                                             depMode && rmRelatedDepIds(item).length > 0 && (React.createElement("span", { title: "Has dependencies", style: { fontSize: 8.5, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: "#FEF9E7", color: "#7D6608", flexShrink: 0, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1 } }, "\u2194")),
@@ -4545,13 +4512,6 @@ function RoadmapView(props) {
                         "Turn on ",
                         React.createElement("strong", null, "\u2194 Dependency mode"),
                         ", then click an initiative. The focus row turns amber, upstream dependencies turn yellow, impacted downstream rows turn blue, and unrelated rows fade.") },
-                { icon: "⚠", title: "Capacity warning", color: "#B7950B", bg: "#FFFBEB",
-                    body: React.createElement(React.Fragment, null,
-                        "A gold ",
-                        React.createElement("strong", { style: { color: "#B7950B", fontSize: 14, fontWeight: 400 } }, "\u26A0"),
-                        " icon means one or more teams flagged \"No Capacity Remaining\" for that initiative on the current Capacity sheet. Click the icon to jump directly to that initiative on the Capacity tab, or use the ",
-                        React.createElement("strong", null, "View capacity warnings"),
-                        " button at the top to filter to all flagged items at once.") },
                 { icon: "🖨", title: "Print & filters", color: "#185FA5", bg: "#F4FAFF",
                     body: React.createElement(React.Fragment, null,
                         "The ",
@@ -4622,7 +4582,9 @@ function App() {
                         "NIH \u00B7 ",
                         React.createElement(AoU, null),
                         " Research Program \u00B7 ",
-                        CYCLE.current),
+                        CYCLE.current,
+                        " \u00B7 ",
+                        React.createElement("span", { style: { color: "#C0392B", fontWeight: 700 } }, "For Internal Use Only")),
                     React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#111", lineHeight: 1.2, letterSpacing: -0.2 } }, IS_ROADMAP_ONLY ? "Program Roadmap" : "Program Dashboards")),
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" } },
                     data.state.status === "ready" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#EAF7EF", color: "#1E8449", fontWeight: 600 } },
@@ -4637,9 +4599,9 @@ function App() {
                 React.createElement("button", { className: "tab" + (activeView === "qpe" ? " active" : ""), onClick: function () { handleTabClick("qpe"); } }, "Quarterly Planning"),
                 React.createElement("button", { className: "tab" + (activeView === "roadmap" ? " active" : ""), onClick: function () { handleTabClick("roadmap"); } }, "Roadmap"),
                 React.createElement("button", { className: "tab" + (activeView === "capacity" ? " active" : ""), onClick: function () { handleTabClick("capacity"); } }, "Capacity Planning")))),
-        activeView === "qpe" && React.createElement(QpeView, Object.assign({}, viewProps)),
-        activeView === "roadmap" && React.createElement(RoadmapView, Object.assign({}, viewProps)),
-        activeView === "capacity" && React.createElement(CapacityView, Object.assign({}, viewProps)),
+        activeView === "qpe" && React.createElement(QpeView, { ...viewProps }),
+        activeView === "roadmap" && React.createElement(RoadmapView, { ...viewProps }),
+        activeView === "capacity" && React.createElement(CapacityView, { ...viewProps }),
         React.createElement(AouBackToTop, null)));
 }
 function notifyEmbedSize() {
