@@ -3374,6 +3374,16 @@ function rmInitStatusDisplay(item) {
         return RM_INIT_STATUS_CFG.Proposed;
     return null;
 }
+function rmRankValue(item) {
+    if (!item || item.qpeRank == null)
+        return null;
+    var n = parseInt(item.qpeRank, 10);
+    return isNaN(n) ? null : n;
+}
+function rmRankLabel(item) {
+    var r = rmRankValue(item);
+    return r == null ? "" : "#" + String(r).padStart(2, "0");
+}
 function rmIsConcept(item) {
     return Boolean(item && (item.isConcept || item.planningStatus === "Concept" || /concept/i.test(item.projectType || "")));
 }
@@ -3529,6 +3539,7 @@ function rmParsePlanningLookup(csvText) {
             objOwner: get(row, "Obj Owner", "Objective Owner", "Owner"),
             goalNum: gm ? gm[1] : "",
             projectType: get(row, "Project Type", "Type"),
+            rank: qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current)) || qpeValueForAnyRank(header, row)),
         };
     });
     return map;
@@ -3703,6 +3714,8 @@ function rmEnrichRows(rows, planningLookup) {
             out.goal = p.goalNum;
         if (p.projectType)
             out.projectType = p.projectType;
+        if (p.rank != null)
+            out.qpeRank = p.rank;
         if (p.projectType && /concept/i.test(p.projectType))
             out.isConcept = true;
         return out;
@@ -4170,6 +4183,19 @@ function RoadmapView(props) {
                 }
                 return a.name.localeCompare(b.name);
             }
+            if (sortBy === "rank") {
+                var ra = rmRankValue(a) == null ? 999999 : rmRankValue(a);
+                var rb = rmRankValue(b) == null ? 999999 : rmRankValue(b);
+                if (ra !== rb)
+                    return ra - rb;
+                var ria = a.id.split(".").map(Number), rib = b.id.split(".").map(Number);
+                for (var ri = 0; ri < Math.max(ria.length, rib.length); ri++) {
+                    var rva = ria[ri] || 0, rvb = rib[ri] || 0;
+                    if (rva !== rvb)
+                        return rva - rvb;
+                }
+                return a.name.localeCompare(b.name);
+            }
             if (sortBy === "start")
                 return (a.start || "9999") > (b.start || "9999") ? 1 : -1;
             if (sortBy === "end")
@@ -4343,6 +4369,7 @@ function RoadmapView(props) {
                 React.createElement("span", { style: { fontSize: 9.5, textTransform: "uppercase", color: "#bbb", fontWeight: 700, letterSpacing: .05 } }, "Sort"),
                 React.createElement("select", { style: { fontSize: 11.5, padding: "4px 7px", border: "1px solid #e0e0e0", borderRadius: 6 }, value: sortBy, onChange: function (e) { setSortBy(e.target.value); } },
                     React.createElement("option", { value: "goal" }, "Goal"),
+                    React.createElement("option", { value: "rank" }, "Rank"),
                     React.createElement("option", { value: "start" }, "Start date"),
                     React.createElement("option", { value: "end" }, "End date"),
                     React.createElement("option", { value: "id" }, "ID"),
@@ -4439,6 +4466,7 @@ function RoadmapView(props) {
                                         showAud && rmIsConcept(item) ? React.createElement(RmConceptBadge, null) : React.createElement("span", { style: { height: 15 } })),
                                     React.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 } },
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 } },
+                                            showAud && rmRankValue(item) != null && (React.createElement("span", { title: "Q3 2026 rank " + rmRankLabel(item), style: { fontSize: 8.5, fontWeight: 800, padding: "2px 6px", borderRadius: 3, background: "#FEF5E7", color: "#9A6800", border: "1px solid #F4D03F", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1, letterSpacing: .2, flexShrink: 0 } }, rmRankLabel(item))),
                                             showAud && RM_TYPE_SHORT[item.type] && (React.createElement("span", { title: "Audience: " + item.type, style: { fontSize: 8, fontWeight: 700, width: 16, height: 16, borderRadius: 3, display: "inline-flex", alignItems: "center", justifyContent: "center", background: RM_TYPE_BG[item.type] || "#eee", color: RM_TYPE_COLOR[item.type] || "#666", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", cursor: "help", flexShrink: 0 } }, RM_TYPE_SHORT[item.type])),
                                             React.createElement("span", { style: { fontSize: 12.5, fontWeight: 650, color: "#222", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "17px", flex: "1 1 auto", minWidth: 0 }, title: renderText(item.name) }, renderText(item.name))),
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5, minHeight: 14, lineHeight: "14px", overflow: "hidden" } },
@@ -4500,9 +4528,9 @@ function RoadmapView(props) {
                 { icon: null, title: "Milestones", color: "#F5A800", bg: "#FFFAF0",
                     body: React.createElement(React.Fragment, null,
                         React.createElement("span", { style: { color: "#F5A800", fontWeight: 800 } }, "\u25C6"),
-                        " Tech Ready and ",
+                        " and ",
                         React.createElement("span", { style: { color: "#F5A800", fontWeight: 800 } }, "\u2605"),
-                        " Comms markers appear on the parent initiative timeline. Hover over a marker to see its date and category, or use the milestone filter to show one type at a time.") },
+                        " markers appear on the parent initiative timeline. Hover over a marker to see its date and category, or use the milestone filter to show one type at a time.") },
                 { icon: "↔", title: "Dependency mode", color: "#7D6608", bg: "#FFF9EC",
                     body: React.createElement(React.Fragment, null,
                         "Turn on ",
@@ -4595,9 +4623,9 @@ function App() {
                 React.createElement("button", { className: "tab" + (activeView === "qpe" ? " active" : ""), onClick: function () { handleTabClick("qpe"); } }, "Quarterly Planning"),
                 React.createElement("button", { className: "tab" + (activeView === "roadmap" ? " active" : ""), onClick: function () { handleTabClick("roadmap"); } }, "Roadmap"),
                 React.createElement("button", { className: "tab" + (activeView === "capacity" ? " active" : ""), onClick: function () { handleTabClick("capacity"); } }, "Capacity Planning")))),
-        activeView === "qpe" && React.createElement(QpeView, { ...viewProps }),
-        activeView === "roadmap" && React.createElement(RoadmapView, { ...viewProps }),
-        activeView === "capacity" && React.createElement(CapacityView, { ...viewProps }),
+        activeView === "qpe" && React.createElement(QpeView, Object.assign({}, viewProps)),
+        activeView === "roadmap" && React.createElement(RoadmapView, Object.assign({}, viewProps)),
+        activeView === "capacity" && React.createElement(CapacityView, Object.assign({}, viewProps)),
         React.createElement(AouBackToTop, null)));
 }
 function notifyEmbedSize() {
