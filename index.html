@@ -3951,10 +3951,14 @@ function RoadmapDrillContent(props) {
     return (React.createElement(React.Fragment, null,
         React.createElement(IdentityBlock, { init: expItem, goalsRef: {}, currentView: "roadmap", onNavigateView: props.onNavigateView, psiUrlMap: props.psiUrlMap }),
         React.createElement("div", { style: { flex: 1, overflowY: "auto", padding: "14px 20px" } },
-            React.createElement("div", { style: { marginBottom: 12, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" } }, showAud && expItem.awardees && Array.isArray(expItem.awardees) && expItem.awardees.map(function (a) {
-                var cfg = RM_AWARDEE_CFG[a];
-                return cfg ? React.createElement("span", { key: a, style: { fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: cfg.bg, color: cfg.tx } }, cfg.label) : null;
-            })),
+            React.createElement("div", { style: { marginBottom: 12, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" } },
+                rmRankValue(expItem) != null && (React.createElement("span", { title: "Q3 2026 rank " + rmRankLabel(expItem), style: { fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "#FEF5E7", color: "#9A6800", border: "1px solid #F4D03F", letterSpacing: .2 } },
+                    rmRankLabel(expItem),
+                    " \u00B7 Q3 Rank")),
+                showAud && expItem.awardees && Array.isArray(expItem.awardees) && expItem.awardees.map(function (a) {
+                    var cfg = RM_AWARDEE_CFG[a];
+                    return cfg ? React.createElement("span", { key: a, style: { fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: cfg.bg, color: cfg.tx } }, cfg.label) : null;
+                })),
             (rmRelatedDepIds(expItem).length > 0 || (depGraph.downstream[expItem.id] && depGraph.downstream[expItem.id].length) || expItem.dependencyType || expItem.requiredBy || expItem.impactIfLate || expItem.mitigationNotes) && (React.createElement("div", { style: { marginBottom: 10, padding: "10px 12px", borderRadius: 6, background: "#FEF9E7", border: "1px solid #F5E6A8", borderLeft: "3px solid #B7950B" } },
                 React.createElement("div", { style: { fontSize: 9.5, textTransform: "uppercase", letterSpacing: .5, color: "#7D6608", fontWeight: 800, marginBottom: 8 } }, "Dependency impact"),
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 10px", fontSize: 11.5, color: "#555", marginBottom: 8 } },
@@ -4007,6 +4011,10 @@ function RoadmapDrillContent(props) {
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 10px", fontSize: 11, color: "#555" } },
                     React.createElement("span", { style: { color: "#aaa" } }, "Audience"),
                     React.createElement("span", null, expItem.type || "—"),
+                    rmRankValue(expItem) != null && React.createElement(React.Fragment, null,
+                        React.createElement("span", { style: { color: "#aaa" } }, "Q3 rank"),
+                        React.createElement("span", null,
+                            React.createElement("strong", { style: { color: "#9A6800" } }, rmRankLabel(expItem)))),
                     React.createElement("span", { style: { color: "#aaa" } }, "Start"),
                     React.createElement("span", null, rmFmtDate(expItem.start) || "TBD"),
                     React.createElement("span", { style: { color: "#aaa" } }, "End"),
@@ -4461,7 +4469,7 @@ function RoadmapView(props) {
                                 return (React.createElement("div", { key: item.id, onClick: function () { selectInitiative(item.id); }, style: { height: RM_ROW_H, display: "flex", alignItems: "center", gap: 0, padding: "0 12px 0 10px", borderBottom: "1px solid #f5f5f5", borderLeft: role !== "normal" && role !== "muted" ? "3px solid " + rs.border : (grouped ? "3px solid " + gc(gKey) + "22" : "none"), overflow: "hidden", cursor: "pointer", background: rowBg, opacity: rs.opacity, position: "relative" }, onMouseEnter: function (e) { if (role === "normal" && expanded !== item.id)
                                         e.currentTarget.style.background = "#eef4fa"; }, onMouseLeave: function (e) { if (role === "normal" && expanded !== item.id)
                                         e.currentTarget.style.background = "transparent"; } },
-                                    React.createElement("div", { style: { width: 74, flexShrink: 0, alignSelf: "stretch", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 3, paddingRight: 8, marginRight: 8, borderRight: "1px solid #f0f2f4" } },
+                                    React.createElement("div", { style: { width: 58, flexShrink: 0, alignSelf: "stretch", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 3, paddingRight: 6, marginRight: 6, borderRight: "1px solid #f0f2f4" } },
                                         React.createElement("span", { style: { fontSize: 10, color: "#8a96a3", fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 600, whiteSpace: "nowrap" } }, item.id),
                                         showAud && rmIsConcept(item) ? React.createElement(RmConceptBadge, null) : React.createElement("span", { style: { height: 15 } })),
                                     React.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 } },
@@ -4531,6 +4539,15 @@ function RoadmapView(props) {
                         " and ",
                         React.createElement("span", { style: { color: "#F5A800", fontWeight: 800 } }, "\u2605"),
                         " markers appear on the parent initiative timeline. Hover over a marker to see its date and category, or use the milestone filter to show one type at a time.") },
+                { icon: "#", title: "Rank badges", color: "#9A6800", bg: "#FFF8F2",
+                    body: React.createElement(React.Fragment, null,
+                        "When ",
+                        React.createElement("strong", null, "Show badges"),
+                        " is on, ranked Q3 2026 initiatives display a ",
+                        React.createElement("strong", { style: { color: "#9A6800" } }, "#01"),
+                        " badge in the initiative label. The same Q3 rank appears in the initiative drill-down, and ",
+                        React.createElement("strong", null, "Sort: Rank"),
+                        " lists ranked initiatives first.") },
                 { icon: "↔", title: "Dependency mode", color: "#7D6608", bg: "#FFF9EC",
                     body: React.createElement(React.Fragment, null,
                         "Turn on ",
@@ -4623,9 +4640,9 @@ function App() {
                 React.createElement("button", { className: "tab" + (activeView === "qpe" ? " active" : ""), onClick: function () { handleTabClick("qpe"); } }, "Quarterly Planning"),
                 React.createElement("button", { className: "tab" + (activeView === "roadmap" ? " active" : ""), onClick: function () { handleTabClick("roadmap"); } }, "Roadmap"),
                 React.createElement("button", { className: "tab" + (activeView === "capacity" ? " active" : ""), onClick: function () { handleTabClick("capacity"); } }, "Capacity Planning")))),
-        activeView === "qpe" && React.createElement(QpeView, Object.assign({}, viewProps)),
-        activeView === "roadmap" && React.createElement(RoadmapView, Object.assign({}, viewProps)),
-        activeView === "capacity" && React.createElement(CapacityView, Object.assign({}, viewProps)),
+        activeView === "qpe" && React.createElement(QpeView, { ...viewProps }),
+        activeView === "roadmap" && React.createElement(RoadmapView, { ...viewProps }),
+        activeView === "capacity" && React.createElement(CapacityView, { ...viewProps }),
         React.createElement(AouBackToTop, null)));
 }
 function notifyEmbedSize() {
