@@ -129,8 +129,14 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 })();
 </script>
 <script>
-/* SHARED CONSTANTS */
-const CYCLE = {
+/* SHARED CONSTANTS / QUARTERLY CONFIGURATION
+   One-time setup: publish the Dashboard Config sheet as CSV and paste its URL below.
+   After that, quarterly rollover values live in the sheet rather than this compiled file.
+   Blank URL = backward-compatible Q3 2026 fallback values below. */
+const DASHBOARD_CONFIG_CSV_URL = (function(){
+    try { return new URLSearchParams(window.location.search).get("config") || ""; } catch(e) { return ""; }
+})();
+var CYCLE = {
     current: "Q3 2026",
     previous: "Q2 2026",
     baseline: "Q4 2025",
@@ -139,11 +145,50 @@ const CYCLE = {
     previousShort: "Q2 '26",
     baselineShort: "Q4 '25",
 };
-const PLANNING_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTFUiVPhIMgZnBSRzZaHeu-tYfaCnUbwqQzG7W4Rg8YG56_MoFUg898JjZOjsDkx3wGyp1ZLRlI2fM/pub?gid=0&single=true&output=csv";
-const PREVIOUS_PLANNING_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=0&single=true&output=csv";
-const GOALS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=1157686184&single=true&output=csv";
-const CAPACITY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRBMoz4Ih_0AkKsm0qr1xfM4tkppaQqFJVWJ8IE6tmSO99MmxUOW8scahb2ljMapz_lPO_4Q_EaKDR8/pub?gid=910516878&single=true&output=csv";
-const PSI_URLS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRdDL-Nc8nz2_SPI_ZbsCxkF5rP3T4nkJLVYKEwRIl-RDAuy3l0Dscs-jLpfIhqCdHgBwIZARQ1zqoG/pub?gid=263432553&single=true&output=csv";
+var SOURCE_URLS = {
+    planning: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTFUiVPhIMgZnBSRzZaHeu-tYfaCnUbwqQzG7W4Rg8YG56_MoFUg898JjZOjsDkx3wGyp1ZLRlI2fM/pub?gid=0&single=true&output=csv",
+    previousPlanning: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=0&single=true&output=csv",
+    goals: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=1157686184&single=true&output=csv",
+    capacity: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRBMoz4Ih_0AkKsm0qr1xfM4tkppaQqFJVWJ8IE6tmSO99MmxUOW8scahb2ljMapz_lPO_4Q_EaKDR8/pub?gid=910516878&single=true&output=csv",
+    psiUrls: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRdDL-Nc8nz2_SPI_ZbsCxkF5rP3T4nkJLVYKEwRIl-RDAuy3l0Dscs-jLpfIhqCdHgBwIZARQ1zqoG/pub?gid=263432553&single=true&output=csv"
+};
+var PRE_QPE_BACKLOGGED_IDS = {"2.5.14":true, "3.1.8":true, "4.2.18":true, "3.2.15":true};
+var PRE_QPE_COMPLETE_IDS = {"1.5.7":true, "3.1.10":true, "5.1.12":true, "6.1.3":true, "6.3.4":true};
+var DASHBOARD_RELEASE_STATE = "LIVE";
+function cycleParts(label) { var m=String(label||"").match(/^Q([1-4])\s+(\d{4})$/i); return m?{q:+m[1],year:+m[2]}:null; }
+function shiftQuarter(label, delta) { var p=cycleParts(label); if(!p) return label; var n=(p.year*4+(p.q-1))+delta; var y=Math.floor(n/4), q=(n%4+4)%4+1; return "Q"+q+" "+y; }
+function shortQuarter(label) { var p=cycleParts(label); return p ? "Q"+p.q+" '"+String(p.year).slice(-2) : label; }
+function applyCycle(current) {
+    if(!cycleParts(current)) return;
+    CYCLE.current=current; CYCLE.previous=shiftQuarter(current,-1); CYCLE.baseline=shiftQuarter(current,-3); CYCLE.activeThrough=shiftQuarter(current,2);
+    CYCLE.currentShort=shortQuarter(CYCLE.current); CYCLE.previousShort=shortQuarter(CYCLE.previous); CYCLE.baselineShort=shortQuarter(CYCLE.baseline);
+}
+function idsToLookup(v) { var out={}; String(v||"").split(/[|,;\s]+/).forEach(function(x){x=x.trim(); if(x) out[x]=true;}); return out; }
+function parseDashboardConfigCsv(text) {
+    var rows=parseCSV(text||""); var cfg={};
+    rows.forEach(function(r){ var k=normHeader(r[0]||""); var v=String(r[1]||"").trim(); if(k&&v) cfg[k]=v; });
+    return cfg;
+}
+function applyDashboardConfig(cfg) {
+    cfg=cfg||{};
+    if(cfg["current cycle"]) applyCycle(cfg["current cycle"]);
+    if(cfg["baseline cycle"]) { CYCLE.baseline=cfg["baseline cycle"]; CYCLE.baselineShort=shortQuarter(CYCLE.baseline); }
+    if(cfg["active through"]) CYCLE.activeThrough=cfg["active through"];
+    if(cfg["planning csv"]) SOURCE_URLS.planning=cfg["planning csv"];
+    if(cfg["previous planning csv"]) SOURCE_URLS.previousPlanning=cfg["previous planning csv"];
+    if(cfg["goals csv"]) SOURCE_URLS.goals=cfg["goals csv"];
+    if(cfg["capacity csv"]) SOURCE_URLS.capacity=cfg["capacity csv"];
+    if(cfg["psi urls csv"]) SOURCE_URLS.psiUrls=cfg["psi urls csv"];
+    if(cfg["pre-qpe backlogged ids"]) PRE_QPE_BACKLOGGED_IDS=idsToLookup(cfg["pre-qpe backlogged ids"]);
+    if(cfg["pre-qpe complete ids"]) PRE_QPE_COMPLETE_IDS=idsToLookup(cfg["pre-qpe complete ids"]);
+    if(cfg["release state"]) DASHBOARD_RELEASE_STATE=cfg["release state"].toUpperCase();
+}
+/* Legacy aliases retained so the rest of the compiled bundle remains compatible. */
+function planningCsvUrl(){ return SOURCE_URLS.planning; }
+function previousPlanningCsvUrl(){ return SOURCE_URLS.previousPlanning; }
+function goalsCsvUrl(){ return SOURCE_URLS.goals; }
+function capacityCsvUrl(){ return SOURCE_URLS.capacity; }
+function psiUrlsCsvUrl(){ return SOURCE_URLS.psiUrls; }
 const ROADMAP_SHEET_ID = "1UAVBmkBC1l-Pnp5UMe_72FTjv_03Xwe9fcgu5nHPcQg";
 const ROADMAP_SHEET_GID = "0";
 const ROADMAP_PUBLISHED_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRr51VQ4ujPMXvw_OkJ_76flVbz5zy3CVjyW6-bwX2Q6B6UJ6lzuKzDaEuZQhwzIMOTpx8sXImEk_L-/pub?gid=" + ROADMAP_SHEET_GID + "&single=true&output=csv";
@@ -466,8 +511,8 @@ function validateCsvSchemas(state) {
         ["ID"],
         ["Initiative Name", "Name"],
         ["5 year Goal", "Goal", "5-year Goal"],
-        ["Q3 2026 Status", "Q3 Status"],
-        ["New Q3 '26 Rank", "Q3 '26 Rank", "Q3 2026 Rank"],
+        qpeHistoryAliasesForQuarter(CYCLE.current),
+        qpeRankAliasesForQuarter(CYCLE.current),
         ["Project Type", "Type"]
     ]));
     issues = issues.concat(validateDuplicatePlanningIds(planningRows, planningHeaderIdx));
@@ -477,7 +522,7 @@ function validateCsvSchemas(state) {
         issues = issues.concat(validateHeaderGroups("Previous Planning", previousRows, previousHeaderIdx, [
             ["ID"],
             ["Initiative Name", "Name"],
-            ["Q2 2026 Status", "Q2 Status", "Status", "Planning Status"]
+            qpeHistoryAliasesForQuarter(CYCLE.previous).concat(["Status", "Planning Status"])
         ]));
         issues = issues.concat(validateDuplicatePlanningIds(previousRows, previousHeaderIdx));
     }
@@ -679,7 +724,7 @@ function detectDQIssues(init) {
     if (!init.objOwner && !init.poc)
         out.push({ field: "owner", issue: "Owner / Objective Owner not assigned" });
     var isConceptType = /concept/i.test(init.projectType || "") || init.status === "Concept";
-    if (isConceptType && (init.q2Rank != null || init.q3Rank != null)) {
+    if (isConceptType && (init.previousRank != null || init.currentRank != null)) {
         out.push({ field: "rank", issue: "Concept-type initiatives should not be ranked" });
     }
     if (isConceptType && (init.status === "Committed")) {
@@ -864,70 +909,49 @@ function SchemaValidationBanner(props) {
 }
 function useDataLoader() {
     var [state, setState] = useState({
-        status: "loading",
-        error: "",
-        loadedAt: null,
-        planningCsv: "",
-        previousPlanningCsv: "",
-        goalsCsv: "",
-        capacityCsv: "",
-        roadmapCsv: "",
-        psiUrlsCsv: "",
+        status: "loading", health: "loading", error: "", loadedAt: null, configLoaded: false,
+        sourceHealth: {}, planningCsv: "", previousPlanningCsv: "", goalsCsv: "", capacityCsv: "", roadmapCsv: "", psiUrlsCsv: "",
     });
     var load = useCallback(function () {
-        setState(function (s) { return Object.assign({}, s, { status: "loading", error: "" }); });
+        setState(function (s) { return Object.assign({}, s, { status: "loading", health: "loading", error: "" }); });
         function fetchText(url) {
-            return fetch(addCacheBuster(url), { cache: "no-store" })
-                .then(function (r) {
-                if (!r.ok)
-                    throw new Error("HTTP " + r.status + " from " + url);
+            if (!url) return Promise.reject(new Error("Missing source URL"));
+            return fetch(addCacheBuster(url), { cache: "no-store" }).then(function (r) {
+                if (!r.ok) throw new Error("HTTP " + r.status + " from " + url);
                 return r.text();
-            })
-                .then(function (text) {
-                if (text.toLowerCase().indexOf("<html") > -1) {
-                    throw new Error("Sheet returned HTML instead of CSV — check publication settings");
-                }
+            }).then(function (text) {
+                if (text.toLowerCase().indexOf("<html") > -1) throw new Error("Sheet returned HTML instead of CSV — check publication settings");
                 return text;
             });
         }
-        function fetchRoadmapCsv() {
-            return fetchText(ROADMAP_PUBLISHED_CSV)
-                .catch(function () { return fetchText(ROADMAP_EXPORT_CSV); })
-                .catch(function () { return ""; });
+        function loadConfig() {
+            if (!DASHBOARD_CONFIG_CSV_URL) return Promise.resolve(false);
+            return fetchText(DASHBOARD_CONFIG_CSV_URL).then(function(t){ applyDashboardConfig(parseDashboardConfigCsv(t)); return true; });
         }
-        Promise.all([
-            fetchText(PLANNING_CSV_URL),
-            fetchText(PREVIOUS_PLANNING_CSV_URL).catch(function () { return ""; }),
-            fetchText(GOALS_CSV_URL),
-            fetchText(CAPACITY_CSV_URL).catch(function () { return ""; }),
-            fetchRoadmapCsv(),
-            fetchText(PSI_URLS_CSV).catch(function () { return ""; }),
-        ])
-            .then(function (results) {
-            setState({
-                status: "ready",
-                error: "",
-                loadedAt: new Date(),
-                planningCsv: results[0],
-                previousPlanningCsv: results[1],
-                goalsCsv: results[2],
-                capacityCsv: results[3],
-                roadmapCsv: results[4],
-                psiUrlsCsv: results[5],
-            });
-        })
-            .catch(function (err) {
-            setState(function (s) {
-                return Object.assign({}, s, {
-                    status: "error",
-                    error: err.message || String(err)
-                });
-            });
-        });
+        function optional(name, promise) {
+            return promise.then(function(text){ return {name:name,ok:true,text:text}; }).catch(function(err){ return {name:name,ok:false,text:"",error:err.message||String(err)}; });
+        }
+        loadConfig().then(function(configLoaded){
+            return Promise.all([
+                optional("planning", fetchText(planningCsvUrl())),
+                optional("previousPlanning", fetchText(previousPlanningCsvUrl())),
+                optional("goals", fetchText(goalsCsvUrl())),
+                optional("capacity", fetchText(capacityCsvUrl())),
+                optional("roadmap", fetchText(ROADMAP_PUBLISHED_CSV).catch(function(){ return fetchText(ROADMAP_EXPORT_CSV); })),
+                optional("psiUrls", fetchText(psiUrlsCsvUrl()))
+            ]).then(function(results){ return {configLoaded:configLoaded,results:results}; });
+        }).then(function(bundle){
+            var by={}, health={}; bundle.results.forEach(function(r){ by[r.name]=r.text; health[r.name]={ok:r.ok,error:r.error||""}; });
+            if (!health.planning.ok || !health.goals.ok) throw new Error("Required source unavailable: " + (!health.planning.ok ? "Planning" : "Goals"));
+            var degraded = Object.keys(health).some(function(k){ return !health[k].ok; });
+            setState({ status:"ready", health:degraded?"degraded":"live", error:"", loadedAt:new Date(), configLoaded:bundle.configLoaded, sourceHealth:health,
+                planningCsv:by.planning, previousPlanningCsv:by.previousPlanning, goalsCsv:by.goals, capacityCsv:by.capacity, roadmapCsv:by.roadmap, psiUrlsCsv:by.psiUrls });
+        }).catch(function(err){ setState(function(s){ return Object.assign({},s,{status:"error",health:"error",error:err.message||String(err)}); }); });
     }, []);
     useEffect(function () { load(); }, [load]);
     return { state: state, reload: load };
 }
+
 function ViewGuide(props) {
     if (!props.open)
         return null;
@@ -1261,8 +1285,8 @@ const QPE_DEFAULT_HIDDEN_STATUSES = ["Complete", "Backlogged"];
 function qpePrimaryRank(init) {
     if (!init)
         return null;
-    if (init.q3Rank != null)
-        return init.q3Rank;
+    if (init.currentRank != null)
+        return init.currentRank;
     return null;
 }
 function compareInitiativeIds(a, b) {
@@ -1380,11 +1404,9 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
         if (!prevRaw && priorBaseline)
             prevRaw = priorBaseline.raw || "";
         var pt = get(row, "Project Type", "Type");
-        /* RANKED = COMMITTED. Per program rule: any initiative with a Q3 rank
-           is Committed for Q3, regardless of the literal Status column text
-           (which may still read "Q3 2026 Proposed" on the sheet). Applies the
-           same logic historically for Q2 so the quarter-over-quarter history
-           strip is consistent. */
+        /* RANKED = COMMITTED. Per program rule: any initiative with a current-cycle
+           CEO rank is Committed for that cycle regardless of the literal Status
+           column text. Apply the same logic to prior-cycle history for consistency. */
         var q3s = q3r != null ? "Committed" : q3sRaw;
         var q2s = q2r != null ? "Committed" : q2sRaw;
         var prev = prevRaw;
@@ -1400,9 +1422,10 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
             obj: get(row, "26 Obj", "Objective", "Obj"),
             objName: get(row, "Objective Name", "Obj Name"),
             status: qpeParseStatus(q3s) || qpeParseStatus(q2s) || qpeParseStatus(prev) || qpeParseStatus(pt),
-            history: history, q2Rank: q2r, q3Rank: q3r,
+            history: history, previousRank: q2r, currentRank: q3r,
             isNew: /^new\b/i.test(pt),
             projectType: pt,
+            decisionPoint: get(row, "Decision Point", "Disposition Point"),
             fullDesc: get(row, "Initiative Full Description", "Full Description", "Description"),
             shortDesc: get(row, "Short Description (for publishing)", "Short Description") ||
                 get(row, "Initiative Full Description", "Full Description", "Description"),
@@ -1583,16 +1606,16 @@ function QpeDrillPanel(props) {
                             displayLabel ? React.createElement(Chip, { bg: displayBg, tx: displayTx, size: 9.5 }, displayLabel) : React.createElement("span", { style: { fontSize: 9.5, color: "#ccc" } }, "\u2014")),
                         i < QPE_QUARTERS_HIST.length - 1 && React.createElement("span", { style: { color: "#ddd", fontSize: 11 } }, "\u2192")));
                 }))),
-            (init.q3Rank != null || init.q2Rank != null) && (React.createElement("div", { style: { marginBottom: 14, display: "flex", gap: 6, flexWrap: "wrap" } },
-                init.q3Rank != null && (React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 10 },
+            (init.currentRank != null || init.previousRank != null) && (React.createElement("div", { style: { marginBottom: 14, display: "flex", gap: 6, flexWrap: "wrap" } },
+                init.currentRank != null && (React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 10 },
                     "\u2605 CEO rank #",
-                    init.q3Rank,
+                    init.currentRank,
                     " (",
                     CYCLE.currentShort,
                     ")")),
-                init.q2Rank != null && (React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 10 },
+                init.previousRank != null && (React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 10 },
                     "\u2605 CEO rank #",
-                    init.q2Rank,
+                    init.previousRank,
                     " (",
                     CYCLE.previousShort,
                     ")")))),
@@ -1838,6 +1861,14 @@ function QpeInitCard(props) {
         i.shortDesc && React.createElement("div", { style: { fontSize: 10.5, color: "#888", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } }, i.shortDesc),
         React.createElement("div", { style: { fontSize: 10, color: "#aaa", marginTop: "auto" } }, i.objOwner || "no owner")));
 }
+function qpeIsPreQpeDisposition(i, status) {
+    if (!i || i.status !== status) return false;
+    var dp = String(i.decisionPoint || "").trim();
+    if (dp) return /^pre-qpe portfolio review$/i.test(dp);
+    if (status === "Backlogged") return Boolean(PRE_QPE_BACKLOGGED_IDS[i.id]);
+    if (status === "Complete") return Boolean(PRE_QPE_COMPLETE_IDS[i.id]);
+    return false;
+}
 function QpeMainView(props) {
     var initiatives = props.initiatives, onDrill = props.onDrill, onGoalDrill = props.onGoalDrill, goalFocus = props.goalFocus;
     var goalsRef = props.goalsRef || {};
@@ -1851,8 +1882,8 @@ function QpeMainView(props) {
     var activeSummary = useMemo(function () {
         var committed = summaryInitiatives.filter(function (i) { return i.status === "Committed"; });
         var proposed = summaryInitiatives.filter(function (i) { return i.status === "Proposed"; });
-        var backlogged = summaryInitiatives.filter(function (i) { return i.status === "Backlogged"; });
-        var complete = summaryInitiatives.filter(function (i) { return i.status === "Complete"; });
+        var backlogged = summaryInitiatives.filter(function (i) { return i.status === "Backlogged" && !qpeIsPreQpeDisposition(i, "Backlogged"); });
+        var complete = summaryInitiatives.filter(function (i) { return i.status === "Complete" && !qpeIsPreQpeDisposition(i, "Complete"); });
         var concept = summaryInitiatives.filter(function (i) { return i.status === "Concept"; });
         return { committed: committed, proposed: proposed, backlogged: backlogged, complete: complete, concept: concept };
     }, [summaryInitiatives]);
@@ -1866,8 +1897,8 @@ function QpeMainView(props) {
                 lastBackloggedIds[i.id] = true;
         });
         var lastCommitted = Object.keys(lastCommittedIds);
-        var completed = summaryInitiatives.filter(function (i) { return lastCommittedIds[i.id] && i.status === "Complete"; });
-        var backlogged = summaryInitiatives.filter(function (i) { return lastCommittedIds[i.id] && i.status === "Backlogged"; });
+        var completed = summaryInitiatives.filter(function (i) { return lastCommittedIds[i.id] && i.status === "Complete" && !qpeIsPreQpeDisposition(i, "Complete"); });
+        var backlogged = summaryInitiatives.filter(function (i) { return lastCommittedIds[i.id] && i.status === "Backlogged" && !qpeIsPreQpeDisposition(i, "Backlogged"); });
         var ongoing = summaryInitiatives.filter(function (i) { return lastCommittedIds[i.id] && (i.status === "Proposed" || i.status === "Committed") && !i.isNew; });
         var newProposed = summaryInitiatives.filter(function (i) {
             if (!i.isNew)
@@ -1878,7 +1909,10 @@ function QpeMainView(props) {
             return !hadPriorHistory;
         });
         var revived = summaryInitiatives.filter(function (i) { return lastBackloggedIds[i.id] && (i.status === "Proposed" || i.status === "Committed"); });
-        return { lastCommittedTotal: lastCommitted.length, completed: completed, backlogged: backlogged, ongoing: ongoing, newProposed: newProposed, revived: revived };
+        var preQpeComplete = summaryInitiatives.filter(function(i){ return qpeIsPreQpeDisposition(i, "Complete"); });
+        var preQpeBacklogged = summaryInitiatives.filter(function(i){ return qpeIsPreQpeDisposition(i, "Backlogged"); });
+        var newCommitted = summaryInitiatives.filter(function(i){ return i.isNew && i.status === "Committed" && qpePrimaryRank(i) != null; });
+        return { lastCommittedTotal: lastCommitted.length, completed: completed, backlogged: backlogged, ongoing: ongoing, newProposed: newProposed, revived: revived, preQpeComplete: preQpeComplete, preQpeBacklogged: preQpeBacklogged, newCommitted: newCommitted };
     }, [summaryInitiatives]);
     var newAndRevived = useMemo(function () {
         var seen = {}, out = [];
@@ -1932,16 +1966,27 @@ function QpeMainView(props) {
             React.createElement("summary", { style: { cursor: "pointer", padding: "10px 14px", background: "#fafbfc", fontSize: 11, textTransform: "uppercase", letterSpacing: .65, color: "#607080", fontWeight: 800, display: "flex", alignItems: "center", gap: 8, listStyle: "none" } },
                 React.createElement("span", null, "Past QPE activity"),
                 React.createElement("span", { style: { fontSize: 10, color: "#8a98a8", letterSpacing: 0, textTransform: "none", fontWeight: 500 } },
-                    cycleStory.completed.length + cycleStory.backlogged.length + cycleStory.ongoing.length + cycleStory.newProposed.length + cycleStory.revived.length,
+                    cycleStory.preQpeComplete.length + cycleStory.preQpeBacklogged.length + cycleStory.newCommitted.length + cycleStory.completed.length + cycleStory.backlogged.length + cycleStory.ongoing.length + cycleStory.newProposed.length + cycleStory.revived.length,
                     " items hidden by default")),
             React.createElement("div", { style: { padding: "12px 14px 14px" } },
-                React.createElement("div", { style: { fontSize: 11.5, color: "#7b8792", lineHeight: 1.45, marginBottom: 10 } }, "Prior-cycle outcomes and prior New/Revived buckets are hidden by default. Open this section when you need to review the last QPE context."),
+                React.createElement("div", { style: { fontSize: 11.5, color: "#7b8792", lineHeight: 1.45, marginBottom: 10 } }, "Pre-QPE dispositions and cycle-transition context are hidden by default. Decision Point is authoritative when present; temporary ID lists are used only as a fallback."),
+                React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch", marginBottom: 12 } }, [
+                    { label: "✓ Complete (pre-QPE)", items: cycleStory.preQpeComplete, sublabel: "closed during Phase 1 / before QPE", accent: "#117A65", count: cycleStory.preQpeComplete.length, color: "#117A65", bg: "#fafbfc", suffix: "before QPE" },
+                    { label: "↓ Backlogged (pre-QPE)", items: cycleStory.preQpeBacklogged, sublabel: "deferred during Phase 1 / before QPE", accent: "#7D6608", count: cycleStory.preQpeBacklogged.length, color: "#7D6608", bg: "#fafbfc", suffix: "before QPE" },
+                    { label: "+ New This Cycle (Committed)", items: cycleStory.newCommitted, sublabel: "NEW initiatives ratified this cycle", accent: "#1E8449", count: cycleStory.newCommitted.length, color: "#1E8449", bg: "#EAF7EF", suffix: "ratified" }
+                ].map(function (t) {
+                    if (t.count === 0) return null;
+                    return React.createElement("div", { key:t.label, onClick:function(){props.onListDrill({label:t.label,items:t.items,sublabel:t.sublabel,accent:t.accent});}, style:{padding:"8px 12px",flex:"1 1 170px",display:"flex",flexDirection:"column",gap:1,justifyContent:"center",cursor:"pointer",background:t.bg,border:"1px solid #ececec",borderRadius:10}},
+                        React.createElement("div", {style:{fontSize:9,textTransform:"uppercase",letterSpacing:.4,color:"#777",fontWeight:600}}, t.label),
+                        React.createElement("div", {style:{fontSize:18,fontWeight:700,color:t.color,lineHeight:1.1}}, t.count),
+                        React.createElement("div", {style:{fontSize:9.5,color:"#999"}}, t.suffix));
+                })),
                 React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch", marginBottom: newAndRevived.length > 0 ? 14 : 0 } }, [
                     { label: "✓ Completed", items: cycleStory.completed, sublabel: "of " + cycleStory.lastCommittedTotal + " committed last cycle", accent: "#117A65", count: cycleStory.completed.length, color: "#117A65", bg: "#fafbfc", suffix: "last cycle" },
                     { label: "↓ Backlogged", items: cycleStory.backlogged, sublabel: "of " + cycleStory.lastCommittedTotal + " committed last cycle", accent: "#7D6608", count: cycleStory.backlogged.length, color: "#7D6608", bg: "#fafbfc", suffix: "last cycle" },
                     { label: "↻ Ongoing", items: cycleStory.ongoing, sublabel: "carried forward from last cycle", accent: "#7D6608", count: cycleStory.ongoing.length, color: "#7D6608", bg: "#fff", bdr: "#ececec", suffix: "last cycle" },
-                    { label: "+ New Proposed", items: cycleStory.newProposed, sublabel: "added in the prior cycle", accent: "#9A6800", count: cycleStory.newProposed.length, color: "#9A6800", bg: "#FEF5E7", bdr: "#F4D03F", suffix: "last cycle" },
-                    { label: "↻ Revived", items: cycleStory.revived, sublabel: "revived in the prior cycle", accent: "#6C3483", count: cycleStory.revived.length, color: "#6C3483", bg: "#fff", bdr: "#ececec", suffix: "last cycle" },
+                    { label: "+ New Proposed", items: cycleStory.newProposed, sublabel: "submitted for the current cycle", accent: "#9A6800", count: cycleStory.newProposed.length, color: "#9A6800", bg: "#FEF5E7", bdr: "#F4D03F", suffix: "current cycle" },
+                    { label: "↻ Revived", items: cycleStory.revived, sublabel: "revived for the current cycle", accent: "#6C3483", count: cycleStory.revived.length, color: "#6C3483", bg: "#fff", bdr: "#ececec", suffix: "current cycle" },
                 ].map(function (t) {
                     if (t.count === 0)
                         return null;
@@ -1951,7 +1996,7 @@ function QpeMainView(props) {
                         React.createElement("div", { style: { fontSize: 9.5, color: t.bg === "#FEF5E7" ? "#9A6800" : "#aaa" } }, t.suffix)));
                 })),
                 newAndRevived.length > 0 && (React.createElement("div", null,
-                    React.createElement("div", { style: { fontSize: 10.5, textTransform: "uppercase", letterSpacing: .6, color: "#9A6800", fontWeight: 800, marginBottom: 8 } }, "Prior-cycle New Proposed and Revived Initiatives"),
+                    React.createElement("div", { style: { fontSize: 10.5, textTransform: "uppercase", letterSpacing: .6, color: "#9A6800", fontWeight: 800, marginBottom: 8 } }, "Current-cycle New Proposed and Revived Initiatives"),
                     React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 } }, (function () {
                         var revivedIds = {};
                         cycleStory.revived.forEach(function (r) { revivedIds[r.id] = true; });
@@ -1965,7 +2010,7 @@ function QpeMainView(props) {
                     "Rank List \u2014 ",
                     CYCLE.current),
                 React.createElement("span", { style: { flex: 1, height: 1, background: "#ddd" } }),
-                React.createElement("span", { style: { fontSize: 10, color: "#999", letterSpacing: 0, fontWeight: 500, textTransform: "none" } }, "Q3 2026 ranked initiatives")),
+                React.createElement("span", { style: { fontSize: 10, color: "#999", letterSpacing: 0, fontWeight: 500, textTransform: "none" } }, CYCLE.current + " ranked initiatives")),
             React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, rankListItems.length === 0 ? (React.createElement("div", { style: { fontSize: 12, color: "#bbb", fontStyle: "italic", padding: "10px 0" } }, "No ranked initiatives match the current filters.")) : rankListItems.map(function (i) {
                 var g = GOALS[i.goal];
                 var sc = STATUS_CFG[i.status];
@@ -2148,7 +2193,7 @@ function QpeView(props) {
                     body: React.createElement(React.Fragment, null, "Goal lanes group initiatives by strategic goal. Click a lane header to open goal details, including objectives and owners; click an initiative row to open its drill-down.") },
                 { icon: "🔎", title: "Filters & search", color: "#117A65", bg: "#F4FFFB",
                     body: React.createElement(React.Fragment, null,
-                        "Use Focus and Search to narrow the visible planning set. Use Sort and View to switch between goal lanes and the Q3 2026 rank list. ",
+                        "Use Focus and Search to narrow the visible planning set. Use Sort and View to switch between goal lanes and the " + CYCLE.current + " rank list. ",
                         React.createElement("strong", null, "Clear"),
                         " resets the current filters.") },
                 { icon: "📄", title: "Initiative drill-down", color: "#B3541E", bg: "#FFF8F2",
@@ -2201,7 +2246,7 @@ function QpeView(props) {
                         " exploratory, excluded from capacity"),
                     React.createElement("span", null,
                         React.createElement("strong", { style: { color: "#9A6800" } }, "Rank #N"),
-                        " CEO-ratified Q3 2026 ranking")))
+                        " CEO-ratified " + CYCLE.current + " ranking")))
             } })));
 }
 /* ════════════════════════════════════════════════════════════════════════════
@@ -2304,18 +2349,17 @@ function capParseInitiatives(csvText, capacityIds) {
         var g = gm ? gm[1] : "";
         if (!GOALS[g])
             return acc;
-        var q3sRaw = get(row, "Q3 2026 Status", "Q3 Status");
-        var q2sRaw = get(row, "Q2 2026 Status", "Q2 Status");
-        var q3rRaw = get(row, "New Q3 '26 Rank", "Q3 '26 Rank", "Q3 2026 Rank");
-        var q3rHasRank = q3rRaw !== null && q3rRaw !== undefined && String(q3rRaw).trim() !== "";
-        var q3s = q3rHasRank ? "Committed" : q3sRaw;
+        var q3sRaw = qpeValueForQuarterStatus(hdr, row, CYCLE.current, get, qpeHistoryAliasesForQuarter(CYCLE.current));
+        var q2sRaw = qpeValueForQuarterStatus(hdr, row, CYCLE.previous, get, qpeHistoryAliasesForQuarter(CYCLE.previous));
+        var q3r = qpeParseRank(qpeValueForQuarterRank(hdr, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current)));
+        var q3s = q3r != null ? "Committed" : q3sRaw;
         var q2s = q2sRaw;
         var status = capParseStatus(q3s) || capParseStatus(q2s);
         var projType = get(row, "Project Type", "Type");
         var isConcept = /concept/i.test(projType) || status === "Concept";
         if (status === "Complete" || status === "Eliminated" || status === "Backlogged")
             return acc;
-        if (isConcept && !capacityIds[id])
+        if (isConcept)
             return acc;
         acc.push({
             id: id, name: name, goal: g, status: status,
@@ -2353,18 +2397,17 @@ function capCountExcludedInitiatives(csvText, capacityIds) {
         var g = gm ? gm[1] : "";
         if (!GOALS[g])
             return;
-        var q3sRaw = get(row, "Q3 2026 Status", "Q3 Status");
-        var q2sRaw = get(row, "Q2 2026 Status", "Q2 Status");
-        var q3rRaw = get(row, "New Q3 '26 Rank", "Q3 '26 Rank", "Q3 2026 Rank");
-        var q3rHasRank = q3rRaw !== null && q3rRaw !== undefined && String(q3rRaw).trim() !== "";
-        var q3s = q3rHasRank ? "Committed" : q3sRaw;
+        var q3sRaw = qpeValueForQuarterStatus(hdr, row, CYCLE.current, get, qpeHistoryAliasesForQuarter(CYCLE.current));
+        var q2sRaw = qpeValueForQuarterStatus(hdr, row, CYCLE.previous, get, qpeHistoryAliasesForQuarter(CYCLE.previous));
+        var q3r = qpeParseRank(qpeValueForQuarterRank(hdr, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current)));
+        var q3s = q3r != null ? "Committed" : q3sRaw;
         var q2s = q2sRaw;
         var status = capParseStatus(q3s) || capParseStatus(q2s);
         var projType = get(row, "Project Type", "Type");
         var isConcept = /concept/i.test(projType) || status === "Concept";
         if (status === "Complete" || status === "Eliminated" || status === "Backlogged")
             count++;
-        else if (isConcept && !capacityIds[id])
+        else if (isConcept)
             count++;
     });
     return count;
@@ -2605,7 +2648,7 @@ function CapTeamSummaryCard(props) {
     function csvEscape(v) { var s = v == null ? "" : String(v); if (/[",\n]/.test(s))
         return '"' + s.replace(/"/g, '""') + '"'; return s; }
     function downloadCsv() {
-        var headers = ["Team", "Initiative ID", "Initiative", "Goal", "Staffing", "Q3 LOE", "3-Quarter LOE", "Notes"];
+        var headers = ["Team", "Initiative ID", "Initiative", "Goal", "Staffing", CYCLE.currentShort + " LOE", "3-Quarter LOE", "Notes"];
         var rows = [headers];
         ["D", "P", "N"].forEach(function (tierKey) {
             byTier[tierKey].forEach(function (e) {
@@ -2702,7 +2745,7 @@ function CapTeamSummariesPanel(props) {
     function csvEscape(v) { var s = v == null ? "" : String(v); if (/[",\n]/.test(s))
         return '"' + s.replace(/"/g, '""') + '"'; return s; }
     function downloadCombinedCsv() {
-        var headers = ["Team", "Initiative ID", "Initiative", "Goal", "Staffing", "Q3 LOE", "3-Quarter LOE", "Notes"];
+        var headers = ["Team", "Initiative ID", "Initiative", "Goal", "Staffing", CYCLE.currentShort + " LOE", "3-Quarter LOE", "Notes"];
         var rows = [headers];
         function loeNum(v) { var n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
         summaries.forEach(function (s) {
@@ -2812,7 +2855,7 @@ function CapDrillPanel(props) {
                             return (React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "1fr auto auto", gap: "0 10px", padding: "5px 10px", marginBottom: 2, borderRadius: 5, background: scfg.bg, borderLeft: "3px solid " + scfg.color + "55", fontSize: 11.5 } },
                                 React.createElement("span", { style: { color: "#222", fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, t.name),
                                 React.createElement("span", { style: { color: "#888", whiteSpace: "nowrap", fontSize: 10.5 } },
-                                    "Q3: ",
+                                    CYCLE.currentShort + ": ",
                                     React.createElement("strong", { style: { color: "#444" } }, loeLbl)),
                                 React.createElement("span", { style: { color: "#888", whiteSpace: "nowrap", fontSize: 10.5 } },
                                     "3Qtr: ",
@@ -3001,8 +3044,11 @@ function CapacityView(props) {
                 bv = b.cap ? (b.cap.ciNum == null ? -1 : b.cap.ciNum) : -1;
                 return asc ? av - bv : bv - av;
             }
-            if (col === "id" || col === "name") {
+            if (col === "id") {
                 return asc ? compareIds(a.init.id, b.init.id) : compareIds(b.init.id, a.init.id);
+            }
+            if (col === "name") {
+                return asc ? String(a.init.name || "").localeCompare(String(b.init.name || "")) : String(b.init.name || "").localeCompare(String(a.init.name || ""));
             }
             if (col === "goal") {
                 return asc ? a.init.goal.localeCompare(b.init.goal) : b.init.goal.localeCompare(a.init.goal);
@@ -3210,7 +3256,7 @@ function CapacityView(props) {
                 { icon: "🚧", title: "Capacity Bottlenecks", color: "#C0392B", bg: "#FFF4F2",
                     body: React.createElement(React.Fragment, null, "Shows which teams are most often flagging \"No Capacity\" relative to their total assigned initiatives. Top 7 teams shown; higher bars mean more conflicts to resolve.") },
                 { icon: "🏷", title: "Drill-down details", color: "#607080", bg: "#fff",
-                    body: React.createElement(React.Fragment, null, "Drill-downs lead with the shared identity block, then show the Confidence Index, performer responses grouped by staffing tier (with Q3 and 3-quarter LOE), the weighting reference, and the summary.") },
+                    body: React.createElement(React.Fragment, null, "Drill-downs lead with the shared identity block, then show the Confidence Index, performer responses grouped by staffing tier (with " + CYCLE.currentShort + " and 3-quarter LOE), the weighting reference, and the summary.") },
                 { icon: "🔗", title: "Cross-view navigation", color: "#185FA5", bg: "#F4FAFF",
                     body: React.createElement(React.Fragment, null,
                         "From any drill-down, click ",
@@ -3312,7 +3358,7 @@ const RM_TODAY = (function () {
     return new Date();
 })();
 const RM_DEFAULT_RANGE = (function () {
-    var now = new Date();
+    var now = new Date(RM_TODAY.getTime());
     var startY = now.getFullYear(), startM = now.getMonth();
     var currentQuarterEndM = Math.floor(startM / 3) * 3 + 2;
     var endDate = new Date(startY, currentQuarterEndM + 9, 1);
@@ -3353,10 +3399,11 @@ function rmVisibleInRange(item, vs, ve) {
     return false;
 }
 function rmIsComplete(item) {
-    if (!item)
-        return false;
-    if (/^complete/i.test(item.planningStatus || ""))
-        return true;
+    if (!item) return false;
+    return /^complete/i.test(String(item.planningStatus || item.status || ""));
+}
+function rmIsOverdue(item) {
+    if (!item || rmIsComplete(item)) return false;
     var end = rmParseDate(item.end);
     return Boolean(end && end < RM_TODAY);
 }
@@ -3721,7 +3768,7 @@ var __engCommsInit = {
     objOwner: "",
     poc: "",
 };
-inits.push(__engCommsInit);
+if (!inits.some(function(x){ return x && x.id === __engCommsInit.id; })) inits.push(__engCommsInit);
 
 var __engCommsMs = [
     // National Newsletter (star × 4)
@@ -3757,6 +3804,7 @@ function rmEnrichRows(rows, planningLookup) {
             return item;
         var p = planningLookup[item.id] || {};
         var out = Object.assign({}, item);
+        out.status = qpeParseStatus(item.planningStatus || "") || item.status || null;
         if (p.summary)
             out.description = p.summary;
         else if (!out.description && p.fullDesc)
@@ -4011,9 +4059,9 @@ function RoadmapDrillContent(props) {
         React.createElement(IdentityBlock, { init: expItem, goalsRef: {}, currentView: "roadmap", onNavigateView: props.onNavigateView, psiUrlMap: props.psiUrlMap }),
         React.createElement("div", { style: { flex: 1, overflowY: "auto", padding: "14px 20px" } },
             React.createElement("div", { style: { marginBottom: 12, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" } },
-                rmRankValue(expItem) != null && (React.createElement("span", { title: "Q3 2026 rank " + rmRankLabel(expItem), style: { fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "#FEF5E7", color: "#9A6800", border: "1px solid #F4D03F", letterSpacing: .2 } },
+                rmRankValue(expItem) != null && (React.createElement("span", { title: CYCLE.current + " rank " + rmRankLabel(expItem), style: { fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "#FEF5E7", color: "#9A6800", border: "1px solid #F4D03F", letterSpacing: .2 } },
                     rmRankLabel(expItem),
-                    " \u00B7 Q3 Rank")),
+                    " · " + CYCLE.currentShort + " Rank")),
                 showAud && expItem.awardees && Array.isArray(expItem.awardees) && expItem.awardees.map(function (a) {
                     var cfg = RM_AWARDEE_CFG[a];
                     return cfg ? React.createElement("span", { key: a, style: { fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: cfg.bg, color: cfg.tx } }, cfg.label) : null;
@@ -4071,7 +4119,7 @@ function RoadmapDrillContent(props) {
                     React.createElement("span", { style: { color: "#aaa" } }, "Audience"),
                     React.createElement("span", null, expItem.type || "—"),
                     rmRankValue(expItem) != null && React.createElement(React.Fragment, null,
-                        React.createElement("span", { style: { color: "#aaa" } }, "Q3 rank"),
+                        React.createElement("span", { style: { color: "#aaa" } }, CYCLE.currentShort + " rank"),
                         React.createElement("span", null,
                             React.createElement("strong", { style: { color: "#9A6800" } }, rmRankLabel(expItem)))),
                     React.createElement("span", { style: { color: "#aaa" } }, "Start"),
@@ -4533,7 +4581,7 @@ function RoadmapView(props) {
                                         showAud && rmIsConcept(item) ? React.createElement(RmConceptBadge, null) : React.createElement("span", { style: { height: 15 } })),
                                     React.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 } },
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 } },
-                                            showAud && rmRankValue(item) != null && (React.createElement("span", { title: "Q3 2026 rank " + rmRankLabel(item), style: { fontSize: 8.5, fontWeight: 800, padding: "2px 6px", borderRadius: 3, background: "#FEF5E7", color: "#9A6800", border: "1px solid #F4D03F", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1, letterSpacing: .2, flexShrink: 0 } }, rmRankLabel(item))),
+                                            showAud && rmRankValue(item) != null && (React.createElement("span", { title: CYCLE.current + " rank " + rmRankLabel(item), style: { fontSize: 8.5, fontWeight: 800, padding: "2px 6px", borderRadius: 3, background: "#FEF5E7", color: "#9A6800", border: "1px solid #F4D03F", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1, letterSpacing: .2, flexShrink: 0 } }, rmRankLabel(item))),
                                             showAud && RM_TYPE_SHORT[item.type] && (React.createElement("span", { title: "Audience: " + item.type, style: { fontSize: 8, fontWeight: 700, width: 16, height: 16, borderRadius: 3, display: "inline-flex", alignItems: "center", justifyContent: "center", background: RM_TYPE_BG[item.type] || "#eee", color: RM_TYPE_COLOR[item.type] || "#666", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", cursor: "help", flexShrink: 0 } }, RM_TYPE_SHORT[item.type])),
                                             React.createElement("span", { style: { fontSize: 12.5, fontWeight: 650, color: "#222", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "17px", flex: "1 1 auto", minWidth: 0 }, title: renderText(item.name) }, renderText(item.name))),
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5, minHeight: 14, lineHeight: "14px", overflow: "hidden" } },
@@ -4602,9 +4650,9 @@ function RoadmapView(props) {
                     body: React.createElement(React.Fragment, null,
                         "When ",
                         React.createElement("strong", null, "Show badges"),
-                        " is on, ranked Q3 2026 initiatives display a ",
+                        " is on, ranked " + CYCLE.current + " initiatives display a ",
                         React.createElement("strong", { style: { color: "#9A6800" } }, "#01"),
-                        " badge in the initiative label. The same Q3 rank appears in the initiative drill-down, and ",
+                        " badge in the initiative label. The same " + CYCLE.currentShort + " rank appears in the initiative drill-down, and ",
                         React.createElement("strong", null, "Sort: Rank"),
                         " lists ranked initiatives first.") },
                 { icon: "↔", title: "Dependency mode", color: "#7D6608", bg: "#FFF9EC",
@@ -4687,9 +4735,8 @@ function App() {
                         React.createElement("span", { style: { color: "#C0392B", fontWeight: 700 } }, "For Internal Use Only")),
                     React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#111", lineHeight: 1.2, letterSpacing: -0.2 } }, IS_ROADMAP_ONLY ? "Program Roadmap" : "Program Dashboards")),
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" } },
-                    data.state.status === "ready" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#EAF7EF", color: "#1E8449", fontWeight: 600 } },
-                        "\u25CF live \u00B7 ",
-                        data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
+                    data.state.status === "ready" && data.state.health === "live" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#EAF7EF", color: "#1E8449", fontWeight: 600 } }, "● " + DASHBOARD_RELEASE_STATE.toLowerCase() + " · ", data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
+                    data.state.status === "ready" && data.state.health === "degraded" && (React.createElement("span", { title: Object.keys(data.state.sourceHealth||{}).filter(function(k){return !data.state.sourceHealth[k].ok;}).join(", ") + " unavailable", style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#FEF5E7", color: "#9A6800", fontWeight: 600 } }, "⚠ degraded · " + data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
                     data.state.status === "loading" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#EBF5FB", color: "#2471A3", fontWeight: 600 } }, "\u21BB loading\u2026")),
                     data.state.status === "error" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#FDECEA", color: "#C0392B", fontWeight: 600 }, title: data.state.error }, "\u25CF load failed")),
                     React.createElement("button", { onClick: data.reload, title: "Refresh all data", style: { fontSize: 11.5, padding: "6px 12px", border: "1px solid #C8DCF0", borderRadius: 6, background: "#EBF5FB", color: "#2471A3", cursor: "pointer", fontWeight: 500 } }, "\u21BB Refresh"))),
