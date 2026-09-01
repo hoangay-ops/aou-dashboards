@@ -134,7 +134,21 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
    After that, quarterly rollover values live in the sheet rather than this compiled file.
    Blank URL = backward-compatible Q3 2026 fallback values below. */
 const DASHBOARD_CONFIG_CSV_URL = (function(){
-    try { return new URLSearchParams(window.location.search).get("config") || ""; } catch(e) { return ""; }
+    try {
+        var params = new URLSearchParams(window.location.search || "");
+        var url = params.get("config") || "";
+        /* Properly URL-encoding config= is still preferred. For convenience,
+           repair the common unencoded Google published-CSV form, where the
+           nested &single= and &output= parameters otherwise become outer params. */
+        if (url && /^https:\/\/docs\.google\.com\/spreadsheets\//i.test(url)) {
+            if (params.has("single") && !/[?&]single=/i.test(url))
+                url += (url.indexOf("?") === -1 ? "?" : "&") + "single=" + encodeURIComponent(params.get("single") || "true");
+            if (params.has("output") && !/[?&]output=/i.test(url))
+                url += (url.indexOf("?") === -1 ? "?" : "&") + "output=" + encodeURIComponent(params.get("output") || "csv");
+        }
+        return url;
+    }
+    catch(e) { return ""; }
 })();
 var CYCLE = {
     current: "Q3 2026",
@@ -165,8 +179,39 @@ function applyCycle(current) {
 }
 function idsToLookup(v) { var out={}; String(v||"").split(/[|,;\s]+/).forEach(function(x){x=x.trim(); if(x) out[x]=true;}); return out; }
 function parseDashboardConfigCsv(text) {
-    var rows=parseCSV(text||""); var cfg={};
-    rows.forEach(function(r){ var k=normHeader(r[0]||""); var v=String(r[1]||"").trim(); if(k&&v) cfg[k]=v; });
+    var rows = parseCSV(text || "");
+    var cfg = {};
+    if (!rows.length) return cfg;
+
+    /* Accept both the compact Setting,Value layout and the distributed
+       index,Setting,Value,Notes template. Find the named columns when present. */
+    var headerIdx = -1, settingCol = -1, valueCol = -1;
+    for (var i = 0; i < Math.min(rows.length, 5); i++) {
+        var normalized = (rows[i] || []).map(normHeader);
+        var sIdx = normalized.indexOf("setting");
+        var vIdx = normalized.indexOf("value");
+        if (sIdx !== -1 && vIdx !== -1) {
+            headerIdx = i;
+            settingCol = sIdx;
+            valueCol = vIdx;
+            break;
+        }
+    }
+    if (headerIdx !== -1) {
+        rows.slice(headerIdx + 1).forEach(function(r) {
+            var k = normHeader(r[settingCol] || "");
+            var v = String(r[valueCol] == null ? "" : r[valueCol]).trim();
+            if (k && v) cfg[k] = v;
+        });
+        return cfg;
+    }
+
+    /* Backward-compatible two-column layout. */
+    rows.forEach(function(r) {
+        var k = normHeader(r[0] || "");
+        var v = String(r[1] == null ? "" : r[1]).trim();
+        if (k && v) cfg[k] = v;
+    });
     return cfg;
 }
 function applyDashboardConfig(cfg) {
@@ -916,49 +961,109 @@ function SchemaValidationBanner(props) {
                         " more"))),
             props.onDismiss && (React.createElement("button", { onClick: props.onDismiss, title: "Dismiss", style: { border: "none", background: "none", color: "#7B241C", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: "0 4px", flexShrink: 0 } }, "\u00D7")))));
 }
+const DASHBOARD_SESSION_CACHE_TTL_MS = 5 * 60 * 1000;
+const DASHBOARD_SESSION_CACHE_PREFIX = "aou-dashboard-v4:";
+function aouCacheKey(url) { return DASHBOARD_SESSION_CACHE_PREFIX + String(url || ""); }
+function aouReadSessionCache(url) {
+    if (!url) return null;
+    try {
+        var raw = window.sessionStorage.getItem(aouCacheKey(url));
+        if (!raw) return null;
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed.text !== "string" || !parsed.savedAt) return null;
+        if ((Date.now() - parsed.savedAt) > DASHBOARD_SESSION_CACHE_TTL_MS) {
+            window.sessionStorage.removeItem(aouCacheKey(url));
+            return null;
+        }
+        return parsed.text;
+    }
+    catch (e) { return null; }
+}
+function aouWriteSessionCache(url, text) {
+    if (!url || typeof text !== "string") return;
+    try {
+        window.sessionStorage.setItem(aouCacheKey(url), JSON.stringify({ savedAt: Date.now(), text: text }));
+    }
+    catch (e) { /* Storage quota/privacy mode: network loading still works. */ }
+}
 function useDataLoader() {
     var [state, setState] = useState({
         status: "loading", health: "loading", error: "", loadedAt: null, configLoaded: false,
         sourceHealth: {}, planningCsv: "", previousPlanningCsv: "", goalsCsv: "", capacityCsv: "", roadmapCsv: "", psiUrlsCsv: "",
     });
-    var load = useCallback(function () {
+    var load = useCallback(function (forceFresh) {
+        forceFresh = forceFresh === true;
         setState(function (s) { return Object.assign({}, s, { status: "loading", health: "loading", error: "" }); });
+
         function fetchText(url) {
             if (!url) return Promise.reject(new Error("Missing source URL"));
-            return fetch(addCacheBuster(url), { cache: "no-store" }).then(function (r) {
+            if (!forceFresh) {
+                var cached = aouReadSessionCache(url);
+                if (cached != null) return Promise.resolve(cached);
+            }
+            var requestUrl = forceFresh ? addCacheBuster(url) : url;
+            return fetch(requestUrl, { cache: forceFresh ? "no-store" : "default" }).then(function (r) {
                 if (!r.ok) throw new Error("HTTP " + r.status + " from " + url);
                 return r.text();
             }).then(function (text) {
                 if (text.toLowerCase().indexOf("<html") > -1) throw new Error("Sheet returned HTML instead of CSV — check publication settings");
+                aouWriteSessionCache(url, text);
                 return text;
             });
         }
         function loadConfig() {
             if (!DASHBOARD_CONFIG_CSV_URL) return Promise.resolve(false);
-            return fetchText(DASHBOARD_CONFIG_CSV_URL).then(function(t){ applyDashboardConfig(parseDashboardConfigCsv(t)); return true; });
+            return fetchText(DASHBOARD_CONFIG_CSV_URL).then(function(t){
+                applyDashboardConfig(parseDashboardConfigCsv(t));
+                return true;
+            });
         }
         function optional(name, promise) {
             return promise.then(function(text){ return {name:name,ok:true,text:text}; }).catch(function(err){ return {name:name,ok:false,text:"",error:err.message||String(err)}; });
         }
+        function requestedSources() {
+            /* The combined dashboard keeps preloading every source because users can
+               switch tabs without another network wait. Standalone pages fetch only
+               what their view can consume. */
+            if (!IS_SINGLE_VIEW) return ["planning","previousPlanning","goals","capacity","roadmap","psiUrls"];
+            if (SINGLE_VIEW_MODE === "qpe") return ["planning","previousPlanning","goals","capacity","psiUrls"];
+            if (SINGLE_VIEW_MODE === "capacity") return ["planning","goals","capacity","psiUrls"];
+            if (SINGLE_VIEW_MODE === "roadmap") return ["planning","capacity","roadmap","psiUrls"];
+            return ["planning","previousPlanning","goals","capacity","roadmap","psiUrls"];
+        }
+        function sourcePromise(name) {
+            if (name === "planning") return fetchText(planningCsvUrl());
+            if (name === "previousPlanning") return fetchText(previousPlanningCsvUrl());
+            if (name === "goals") return fetchText(goalsCsvUrl());
+            if (name === "capacity") return fetchText(capacityCsvUrl());
+            if (name === "roadmap") return fetchText(ROADMAP_PUBLISHED_CSV).catch(function(){ return fetchText(ROADMAP_EXPORT_CSV); });
+            if (name === "psiUrls") return fetchText(psiUrlsCsvUrl());
+            return Promise.reject(new Error("Unknown source: " + name));
+        }
         loadConfig().then(function(configLoaded){
-            return Promise.all([
-                optional("planning", fetchText(planningCsvUrl())),
-                optional("previousPlanning", fetchText(previousPlanningCsvUrl())),
-                optional("goals", fetchText(goalsCsvUrl())),
-                optional("capacity", fetchText(capacityCsvUrl())),
-                optional("roadmap", fetchText(ROADMAP_PUBLISHED_CSV).catch(function(){ return fetchText(ROADMAP_EXPORT_CSV); })),
-                optional("psiUrls", fetchText(psiUrlsCsvUrl()))
-            ]).then(function(results){ return {configLoaded:configLoaded,results:results}; });
+            var names = requestedSources();
+            return Promise.all(names.map(function(name){ return optional(name, sourcePromise(name)); }))
+                .then(function(results){ return {configLoaded:configLoaded, results:results, requested:names}; });
         }).then(function(bundle){
-            var by={}, health={}; bundle.results.forEach(function(r){ by[r.name]=r.text; health[r.name]={ok:r.ok,error:r.error||""}; });
-            if (!health.planning.ok || !health.goals.ok) throw new Error("Required source unavailable: " + (!health.planning.ok ? "Planning" : "Goals"));
+            var by={ planning:"", previousPlanning:"", goals:"", capacity:"", roadmap:"", psiUrls:"" };
+            var health={};
+            bundle.results.forEach(function(r){ by[r.name]=r.text; health[r.name]={ok:r.ok,error:r.error||""}; });
+
+            var required = { planning:true };
+            if (!IS_SINGLE_VIEW || SINGLE_VIEW_MODE === "qpe" || SINGLE_VIEW_MODE === "capacity") required.goals = true;
+            var requiredFailure = Object.keys(required).find(function(name){ return !health[name] || !health[name].ok; });
+            if (requiredFailure) {
+                var label = requiredFailure === "planning" ? "Planning" : requiredFailure === "goals" ? "Goals" : requiredFailure;
+                throw new Error("Required source unavailable: " + label);
+            }
             var degraded = Object.keys(health).some(function(k){ return !health[k].ok; });
             setState({ status:"ready", health:degraded?"degraded":"live", error:"", loadedAt:new Date(), configLoaded:bundle.configLoaded, sourceHealth:health,
                 planningCsv:by.planning, previousPlanningCsv:by.previousPlanning, goalsCsv:by.goals, capacityCsv:by.capacity, roadmapCsv:by.roadmap, psiUrlsCsv:by.psiUrls });
         }).catch(function(err){ setState(function(s){ return Object.assign({},s,{status:"error",health:"error",error:err.message||String(err)}); }); });
     }, []);
-    useEffect(function () { load(); }, [load]);
-    return { state: state, reload: load };
+    useEffect(function () { load(false); }, [load]);
+    var reload = useCallback(function () { load(true); }, [load]);
+    return { state: state, reload: reload };
 }
 
 function ViewGuide(props) {
