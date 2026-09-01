@@ -607,11 +607,23 @@ function aouUrlParam(name) {
     return "";
 }
 function aouIsTruthy(v) { return /^(1|true|yes|y)$/i.test(String(v || "").trim()); }
-function aouInitialView() {
+function aouSingleViewMode() {
     var view = String(aouUrlParam("view") || aouUrlParam("dashboard") || aouUrlParam("tab") || "").toLowerCase().replace(/_/g, "-");
     if (aouIsTruthy(aouUrlParam("roadmapOnly")) || aouIsTruthy(aouUrlParam("roadmap-only")))
         return "roadmap";
-    if (view === "roadmap-only" || view === "roadmaponly" || view === "roadmap")
+    if (view === "roadmap-only" || view === "roadmaponly")
+        return "roadmap";
+    if (view === "capacity-only" || view === "capacity-planning-only")
+        return "capacity";
+    if (view === "qpe-only" || view === "quarterly-only" || view === "quarterly-planning-only")
+        return "qpe";
+    return "";
+}
+function aouInitialView() {
+    var singleView = aouSingleViewMode();
+    if (singleView) return singleView;
+    var view = String(aouUrlParam("view") || aouUrlParam("dashboard") || aouUrlParam("tab") || "").toLowerCase().replace(/_/g, "-");
+    if (view === "roadmap")
         return "roadmap";
     if (view === "capacity" || view === "capacity-planning")
         return "capacity";
@@ -619,19 +631,16 @@ function aouInitialView() {
         return "qpe";
     return "qpe";
 }
-const IS_ROADMAP_ONLY = (function () {
-    var view = String(aouUrlParam("view") || aouUrlParam("dashboard") || aouUrlParam("tab") || "").toLowerCase().replace(/_/g, "-");
-    return aouIsTruthy(aouUrlParam("roadmapOnly")) || aouIsTruthy(aouUrlParam("roadmap-only")) || view === "roadmap-only" || view === "roadmaponly";
-})();
+const SINGLE_VIEW_MODE = aouSingleViewMode();
+const IS_SINGLE_VIEW = Boolean(SINGLE_VIEW_MODE);
+const IS_ROADMAP_ONLY = SINGLE_VIEW_MODE === "roadmap";
 /* EMBED FIX: IS_EMBEDDED detects whether we're inside an iframe.
    When true, drill-downs switch from position:fixed (viewport-relative,
    gets cut off in iframe) to position:absolute (relative to their view
    container, which now has position:relative). */
 const IS_EMBEDDED = (function () {
     try {
-        const params = new URLSearchParams(window.location.search || "");
-        const view = params.get("view") || "";
-        return window.self !== window.top || view === "roadmap-only";
+        return window.self !== window.top || IS_SINGLE_VIEW;
     }
     catch (e) {
         return true;
@@ -860,13 +869,13 @@ function IdentityBlock(props) {
                     init.status === "Backlogged" ? " because it is Backlogged." :
                         " because it has been Eliminated.")),
         React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" } },
-            !IS_ROADMAP_ONLY && props.currentView !== "qpe" && (React.createElement("button", { onClick: function () { props.onNavigateView("qpe", init.id); }, style: navLinkStyle }, "View in QPE \u2192")),
-            !IS_ROADMAP_ONLY && props.currentView !== "roadmap" && (React.createElement("button", { onClick: function () { props.onNavigateView("roadmap", init.id); }, style: navLinkStyle }, "View in Roadmap \u2192")),
-            !IS_ROADMAP_ONLY && props.currentView !== "capacity" && (React.createElement("button", { onClick: function () { props.onNavigateView("capacity", init.id); }, style: navLinkStyle }, "View in Capacity \u2192")),
+            !IS_SINGLE_VIEW && props.currentView !== "qpe" && (React.createElement("button", { onClick: function () { props.onNavigateView("qpe", init.id); }, style: navLinkStyle }, "View in QPE \u2192")),
+            !IS_SINGLE_VIEW && props.currentView !== "roadmap" && (React.createElement("button", { onClick: function () { props.onNavigateView("roadmap", init.id); }, style: navLinkStyle }, "View in Roadmap \u2192")),
+            !IS_SINGLE_VIEW && props.currentView !== "capacity" && (React.createElement("button", { onClick: function () { props.onNavigateView("capacity", init.id); }, style: navLinkStyle }, "View in Capacity \u2192")),
             psiMapped ? (React.createElement("a", { href: psiUrl, target: "_blank", rel: "noopener noreferrer", style: Object.assign({}, navLinkStyle, { textDecoration: "none", display: "inline-flex", alignItems: "center" }) }, "View in PSI \u2197")) : IS_ADMIN ? (React.createElement("span", { title: "No PSI link assigned for this initiative", style: Object.assign({}, navLinkStyle, { background: "#f5f5f5", color: "#aaa", borderColor: "#e0e0e0", cursor: "not-allowed", display: "inline-flex", alignItems: "center", gap: 3 }) },
                 "PSI link ",
                 React.createElement(DQFlag, { issue: "PSI link not assigned" }))) : null,
-            IS_ROADMAP_ONLY && (React.createElement("span", { style: { fontSize: 10, color: "#aaa", fontStyle: "italic", padding: "5px 0", marginLeft: 4 } }, "Quarterly Planning & Capacity dashboards coming soon")))));
+            IS_SINGLE_VIEW && null)));
 }
 function CycleDriftBanner(props) {
     if (!props.drift)
@@ -4686,7 +4695,7 @@ function RoadmapView(props) {
    APP SHELL + MOUNT
    ════════════════════════════════════════════════════════════════════════════ */
 function App() {
-    var [activeView, setActiveView] = useState(IS_ROADMAP_ONLY ? "roadmap" : aouInitialView());
+    var [activeView, setActiveView] = useState(aouInitialView());
     var [selectedInitiativeId, setSelectedInitiativeId] = useState(null);
     var [driftDismissed, setDriftDismissed] = useState(false);
     var [schemaDismissed, setSchemaDismissed] = useState(false);
@@ -4733,7 +4742,7 @@ function App() {
                         CYCLE.current,
                         " \u00B7 ",
                         React.createElement("span", { style: { color: "#C0392B", fontWeight: 700 } }, "For Internal Use Only")),
-                    React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#111", lineHeight: 1.2, letterSpacing: -0.2 } }, IS_ROADMAP_ONLY ? "Program Roadmap" : "Program Dashboards")),
+                    React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#111", lineHeight: 1.2, letterSpacing: -0.2 } }, IS_SINGLE_VIEW ? (SINGLE_VIEW_MODE === "roadmap" ? "Program Roadmap" : SINGLE_VIEW_MODE === "capacity" ? "Capacity Planning" : "Quarterly Planning") : "Program Dashboards")),
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" } },
                     data.state.status === "ready" && data.state.health === "live" && DASHBOARD_RELEASE_STATE === "LIVE" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#EAF7EF", color: "#1E8449", fontWeight: 600 } }, "\u25CF live \u00B7 ", data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
                     data.state.status === "ready" && data.state.health === "live" && DASHBOARD_RELEASE_STATE !== "LIVE" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#FEF5E7", color: "#9A6800", fontWeight: 700 } }, "\u25CF " + DASHBOARD_RELEASE_STATE.toLowerCase() + " \u00B7 ", data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
@@ -4746,7 +4755,7 @@ function App() {
                 "Initiative statuses, rankings, capacity information, and roadmap details are being updated and should not yet be considered final."),
             IS_ADMIN && !driftDismissed && React.createElement(CycleDriftBanner, { drift: cycleDrift, onDismiss: function () { setDriftDismissed(true); } }),
             IS_ADMIN && !schemaDismissed && React.createElement(SchemaValidationBanner, { issues: schemaIssues, onDismiss: function () { setSchemaDismissed(true); } }),
-            !IS_ROADMAP_ONLY && (React.createElement("div", { className: "tab-bar" },
+            !IS_SINGLE_VIEW && (React.createElement("div", { className: "tab-bar" },
                 React.createElement("button", { className: "tab" + (activeView === "qpe" ? " active" : ""), onClick: function () { handleTabClick("qpe"); } }, "Quarterly Planning"),
                 React.createElement("button", { className: "tab" + (activeView === "roadmap" ? " active" : ""), onClick: function () { handleTabClick("roadmap"); } }, "Roadmap"),
                 React.createElement("button", { className: "tab" + (activeView === "capacity" ? " active" : ""), onClick: function () { handleTabClick("capacity"); } }, "Capacity Planning")))),
