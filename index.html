@@ -1327,21 +1327,6 @@ function qpeValueForQuarterRank(headerRow, row, quarterLabel, fallbackAccessor, 
     }
     return "";
 }
-function qpeValueForAnyRank(headerRow, row) {
-    if (!headerRow || !row)
-        return "";
-    for (var i = 0; i < headerRow.length; i++) {
-        var h = normHeader(headerRow[i]).replace(/[’]/g, "'");
-        if (h.indexOf("rank") === -1)
-            continue;
-        if (h.indexOf("q2") !== -1 || h.indexOf("q1") !== -1 || h.indexOf("q4") !== -1 || h.indexOf("previous") !== -1)
-            continue;
-        var v = row[i];
-        if (v != null && String(v).trim() !== "")
-            return String(v).trim();
-    }
-    return "";
-}
 function qpeSetHistoryEntry(map, id, quarter, raw, rank) {
     if (!id || (!raw && rank == null))
         return;
@@ -1507,8 +1492,6 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
         var q2rCurrent = qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.previous, get, qpeRankAliasesForQuarter(CYCLE.previous)));
         var q2r = q2rCurrent != null ? q2rCurrent : (priorPrevious && priorPrevious.rank != null ? priorPrevious.rank : null);
         var q3rRaw = qpeValueForQuarterRank(header, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current));
-        if (!q3rRaw)
-            q3rRaw = qpeValueForAnyRank(header, row);
         var q3rCurrent = qpeParseRank(q3rRaw);
         var q3r = q3rCurrent;
         if (!q3sRaw && priorCurrent)
@@ -3700,7 +3683,7 @@ function rmParsePlanningLookup(csvText) {
             objOwner: get(row, "Obj Owner", "Objective Owner", "Owner"),
             goalNum: gm ? gm[1] : "",
             projectType: get(row, "Project Type", "Type"),
-            rank: qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current)) || qpeValueForAnyRank(header, row)),
+            rank: qpeParseRank(qpeValueForQuarterRank(header, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current))),
         };
     });
     return map;
