@@ -1409,6 +1409,17 @@ function qpeQuarterParts(label) {
         y += 2000;
     return { q: parseInt(m[1], 10), year: y, shortYear: String(y).slice(2) };
 }
+function qpeCycleOrdinal(label) {
+    var p = qpeQuarterParts(label);
+    return p ? (p.year * 4 + p.q) : null;
+}
+function qpeEnteredAfterSelectedCycle(enteredPortfolio, selectedCycle) {
+    var enteredOrd = qpeCycleOrdinal(enteredPortfolio);
+    var selectedOrd = qpeCycleOrdinal(selectedCycle);
+    if (enteredOrd == null || selectedOrd == null)
+        return false;
+    return enteredOrd > selectedOrd;
+}
 function qpeValueForQuarterStatus(headerRow, row, quarterLabel, fallbackAccessor, aliases) {
     aliases = aliases || [];
     if (fallbackAccessor && aliases.length) {
@@ -1636,6 +1647,13 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
         var name = get(row, "Initiative Name", "Name");
         if (!id || !name)
             return;
+        /* Rolling Planning Master guard: future-cycle initiatives may already exist
+           in the live sheet during portfolio preparation. Do not expose an initiative
+           in an earlier selected cycle when Entered Portfolio is later than that cycle.
+           Blank/unparseable values remain visible for legacy backfill compatibility. */
+        var enteredPortfolio = get(row, "Entered Portfolio", "Portfolio Entry Cycle", "Entered Cycle");
+        if (qpeEnteredAfterSelectedCycle(enteredPortfolio, CYCLE.current))
+            return;
         var goalRaw = get(row, "5 year Goal", "Goal", "5-year Goal");
         var goalMatch = String(goalRaw).match(/(\d)/);
         var goal = goalMatch ? goalMatch[1] : "";
@@ -1685,6 +1703,7 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
             history: history, previousRank: q2r, currentRank: q3r,
             isNew: /^new\b/i.test(pt),
             projectType: pt,
+            enteredPortfolio: enteredPortfolio,
             decisionPoint: get(row, "Decision Point", "Disposition Point"),
             fullDesc: get(row, "Initiative Full Description", "Full Description", "Description"),
             shortDesc: get(row, "Short Description (for publishing)", "Short Description") ||
