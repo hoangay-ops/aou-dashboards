@@ -255,7 +255,7 @@ function parseCycleRegistryCsv(text) {
     var hi=0;
     for(var i=0;i<Math.min(rows.length,6);i++){
         var n=(rows[i]||[]).map(normHeader);
-        if(n.indexOf("cycle label")!==-1 || n.indexOf("cycle key")!==-1){ hi=i; break; }
+        if(n.indexOf("cycle label")!==-1 || n.indexOf("cycle key")!==-1 || n.indexOf("cycle")!==-1 || n.indexOf("quarter")!==-1){ hi=i; break; }
     }
     var header=rows[hi]||[], get=makeRowAccessor(header), out=[];
     rows.slice(hi+1).forEach(function(r){
@@ -265,7 +265,7 @@ function parseCycleRegistryCsv(text) {
         var order=parseInt(registryValue(get(r,"Display Order","Order")),10);
         out.push({
             cycleKey:key, cycleLabel:label, displayOrder:isNaN(order)?quarterKey(label):order,
-            state:(registryValue(get(r,"State","Release State"))||"ARCHIVED").toUpperCase(),
+            state:(registryValue(get(r,"Cycle State","State","Release State"))||"ARCHIVED").toUpperCase(),
             visibleToUsers:registryBool(get(r,"Visible to Users","Visible","Published")),
             previousCycleKey:registryValue(get(r,"Previous Cycle Key","Previous Cycle")),
             planningCsv:registryValue(get(r,"Planning CSV")),
@@ -312,27 +312,24 @@ function applyCycleRegistryRow(row, rows) {
     if(row.previousCycleKey) prev=rows.find(function(r){ return r.cycleKey===row.previousCycleKey; }) || null;
     if(!prev) prev=rows.find(function(r){ return r.cycleLabel===CYCLE.previous; }) || null;
 
-    /* Current-cycle Registry rows may be navigation-only. In that case, inherit
-       the already-loaded Dashboard Config sources. Non-current cycles fail closed
-       until their historical/future Planning and Capacity sources are supplied. */
+    /* Staged-migration rule: Registry values are overrides, never destructive blanks.
+       A minimal Registry can therefore contain only Cycle / Cycle State / Visible.
+       Until a per-cycle source is supplied, the already-loaded Dashboard Config
+       source remains in effect. This keeps the current dashboard working while
+       historical sources are added incrementally. */
     if(row.planningCsv) SOURCE_URLS.planning=row.planningCsv;
-    else if(!isReleasePointer) SOURCE_URLS.planning="";
 
     if(prev && prev.planningCsv) SOURCE_URLS.previousPlanning=prev.planningCsv;
-    else if(!isReleasePointer && row.planningCsv) SOURCE_URLS.previousPlanning=row.planningCsv;
 
     if(row.goalsCsv) SOURCE_URLS.goals=row.goalsCsv;
 
     if(row.capacityCsv) SOURCE_URLS.capacity=row.capacityCsv;
-    else if(!isReleasePointer) SOURCE_URLS.capacity="";
 
     if(row.roadmapCsv) SOURCE_URLS.roadmap=row.roadmapCsv;
     if(row.psiMapCsv) SOURCE_URLS.psiUrls=row.psiMapCsv;
 
     if(row.preQpeBackloggedIds) PRE_QPE_BACKLOGGED_IDS=idsToLookup(row.preQpeBackloggedIds);
-    else if(!isReleasePointer) PRE_QPE_BACKLOGGED_IDS={};
     if(row.preQpeCompleteIds) PRE_QPE_COMPLETE_IDS=idsToLookup(row.preQpeCompleteIds);
-    else if(!isReleasePointer) PRE_QPE_COMPLETE_IDS={};
 
     if(typeof setRoadmapAsOfDate === "function") setRoadmapAsOfDate(row.snapshotDate||"");
 }
@@ -348,8 +345,8 @@ function validateCycleRegistryRows(rows, releasePointer) {
         var isReleasePointer = r.cycleLabel===releasePointer;
         /* The current cycle can inherit source URLs from Dashboard Config. Other
            selectable cycles need explicit Planning and Capacity sources. */
-        if(!isReleasePointer && r.visibleToUsers && !r.planningCsv) issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank");
-        if(!isReleasePointer && r.visibleToUsers && !r.capacityCsv) issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank");
+        if(!isReleasePointer && r.visibleToUsers && !r.planningCsv) issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank; Dashboard Config source is being inherited (not a frozen historical view yet)");
+        if(!isReleasePointer && r.visibleToUsers && !r.capacityCsv) issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank; Dashboard Config source is being inherited (not a frozen historical view yet)");
     });
     return issues;
 }
@@ -1204,7 +1201,7 @@ function useDataLoader() {
             var requiredFailure=Object.keys(required).find(function(name){ return !health[name] || !health[name].ok; });
             if(requiredFailure){
                 var label=requiredFailure === "planning" ? "Planning" : requiredFailure === "goals" ? "Goals" : requiredFailure;
-                throw new Error("Required source unavailable: " + label);
+                throw new Error("Required source unavailable: " + label + ((health[requiredFailure] && health[requiredFailure].error) ? " — " + health[requiredFailure].error : ""));
             }
             var degraded=Object.keys(health).some(function(k){ return !health[k].ok; });
             var selected=bundle.meta.selected;
