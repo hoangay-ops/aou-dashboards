@@ -303,6 +303,7 @@ function selectCycleRegistryRow(rows, requested, allowHidden) {
 function applyCycleRegistryRow(row, rows) {
     if(!row) return;
     rows=rows||[];
+    var isReleasePointer = row.cycleLabel === CONFIG_CURRENT_CYCLE;
     applyCycle(row.cycleLabel);
     SELECTED_CYCLE_KEY=row.cycleKey;
     SELECTED_CYCLE_STATE=row.state||"ARCHIVED";
@@ -310,14 +311,29 @@ function applyCycleRegistryRow(row, rows) {
     var prev=null;
     if(row.previousCycleKey) prev=rows.find(function(r){ return r.cycleKey===row.previousCycleKey; }) || null;
     if(!prev) prev=rows.find(function(r){ return r.cycleLabel===CYCLE.previous; }) || null;
-    SOURCE_URLS.planning=row.planningCsv || "";
-    SOURCE_URLS.previousPlanning=(prev && prev.planningCsv) || row.planningCsv || "";
+
+    /* Current-cycle Registry rows may be navigation-only. In that case, inherit
+       the already-loaded Dashboard Config sources. Non-current cycles fail closed
+       until their historical/future Planning and Capacity sources are supplied. */
+    if(row.planningCsv) SOURCE_URLS.planning=row.planningCsv;
+    else if(!isReleasePointer) SOURCE_URLS.planning="";
+
+    if(prev && prev.planningCsv) SOURCE_URLS.previousPlanning=prev.planningCsv;
+    else if(!isReleasePointer && row.planningCsv) SOURCE_URLS.previousPlanning=row.planningCsv;
+
     if(row.goalsCsv) SOURCE_URLS.goals=row.goalsCsv;
-    SOURCE_URLS.capacity=row.capacityCsv || "";
+
+    if(row.capacityCsv) SOURCE_URLS.capacity=row.capacityCsv;
+    else if(!isReleasePointer) SOURCE_URLS.capacity="";
+
     if(row.roadmapCsv) SOURCE_URLS.roadmap=row.roadmapCsv;
     if(row.psiMapCsv) SOURCE_URLS.psiUrls=row.psiMapCsv;
-    PRE_QPE_BACKLOGGED_IDS=idsToLookup(row.preQpeBackloggedIds||"");
-    PRE_QPE_COMPLETE_IDS=idsToLookup(row.preQpeCompleteIds||"");
+
+    if(row.preQpeBackloggedIds) PRE_QPE_BACKLOGGED_IDS=idsToLookup(row.preQpeBackloggedIds);
+    else if(!isReleasePointer) PRE_QPE_BACKLOGGED_IDS={};
+    if(row.preQpeCompleteIds) PRE_QPE_COMPLETE_IDS=idsToLookup(row.preQpeCompleteIds);
+    else if(!isReleasePointer) PRE_QPE_COMPLETE_IDS={};
+
     if(typeof setRoadmapAsOfDate === "function") setRoadmapAsOfDate(row.snapshotDate||"");
 }
 function validateCycleRegistryRows(rows, releasePointer) {
@@ -329,9 +345,11 @@ function validateCycleRegistryRows(rows, releasePointer) {
     if(!ptr) issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' has no matching row");
     else if(ptr.state!=="LIVE") issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' is "+ptr.state+", not LIVE");
     rows.forEach(function(r){
-        if(!r.planningCsv) issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank");
-        if(!r.goalsCsv) issues.push("Cycle Registry "+r.cycleLabel+": Goals CSV is blank");
-        if(!r.capacityCsv) issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank");
+        var isReleasePointer = r.cycleLabel===releasePointer;
+        /* The current cycle can inherit source URLs from Dashboard Config. Other
+           selectable cycles need explicit Planning and Capacity sources. */
+        if(!isReleasePointer && r.visibleToUsers && !r.planningCsv) issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank");
+        if(!isReleasePointer && r.visibleToUsers && !r.capacityCsv) issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank");
     });
     return issues;
 }
