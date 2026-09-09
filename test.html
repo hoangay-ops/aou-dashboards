@@ -341,11 +341,29 @@ function validateCycleRegistryRows(rows, releasePointer) {
     var ptr=rows.find(function(r){return r.cycleLabel===releasePointer;});
     if(!ptr) issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' has no matching row");
     else if(ptr.state!=="LIVE") issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' is "+ptr.state+", not LIVE");
+
+    /* Row-level source warnings are reserved for genuine release/history gaps.
+       - LIVE may intentionally inherit current sources from Dashboard Config.
+       - PREP rows are allowed to be incomplete while hidden from normal users.
+       - ARCHIVED rows must carry frozen Planning and Capacity sources so a
+         historical selection can never silently display current-cycle data.
+       Goals may intentionally inherit the shared reference source. */
     rows.forEach(function(r){
-        var isLiveReleaseRow=(r.state==="LIVE" && r.cycleLabel===releasePointer);
-        if(!r.planningCsv) issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank" + (isLiveReleaseRow ? "; Dashboard Config Planning CSV is being inherited" : "; add a frozen historical Planning CSV before using this archived cycle"));
-        if(!r.goalsCsv) issues.push("Cycle Registry "+r.cycleLabel+": Goals CSV is blank; Dashboard Config Goals CSV is being inherited");
-        if(!r.capacityCsv) issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank" + (isLiveReleaseRow ? "; Dashboard Config Capacity CSV is being inherited" : "; add a frozen historical Capacity Calculations CSV before using this archived cycle"));
+        var state=String(r.state||"").toUpperCase();
+        var isLiveReleaseRow=(state==="LIVE" && r.cycleLabel===releasePointer);
+        if(isLiveReleaseRow){
+            if(!r.planningCsv && !CONFIG_SOURCE_URLS.planning)
+                issues.push("Cycle Registry "+r.cycleLabel+": no Planning CSV is configured in either the Registry or Dashboard Config");
+            if(!r.capacityCsv && !CONFIG_SOURCE_URLS.capacity)
+                issues.push("Cycle Registry "+r.cycleLabel+": no Capacity Calculations CSV is configured in either the Registry or Dashboard Config");
+            return;
+        }
+        if(state==="ARCHIVED"){
+            if(!r.planningCsv)
+                issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank; add a frozen historical Planning CSV before using this archived cycle");
+            if(!r.capacityCsv)
+                issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank; add a frozen historical Capacity Calculations CSV before using this archived cycle");
+        }
     });
     return issues;
 }
