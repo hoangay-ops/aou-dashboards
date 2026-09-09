@@ -174,6 +174,11 @@ var SOURCE_URLS = {
     roadmap: "",
     psiUrls: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRdDL-Nc8nz2_SPI_ZbsCxkF5rP3T4nkJLVYKEwRIl-RDAuy3l0Dscs-jLpfIhqCdHgBwIZARQ1zqoG/pub?gid=263432553&single=true&output=csv"
 };
+/* Preserve compiled defaults separately so every reload starts from a clean base.
+   Dashboard Config is then applied on top, and the LIVE Registry row may inherit
+   those configured sources during migration when its per-cycle cells are blank. */
+var COMPILED_SOURCE_URLS = Object.assign({}, SOURCE_URLS);
+var CONFIG_SOURCE_URLS = Object.assign({}, SOURCE_URLS);
 var PRE_QPE_BACKLOGGED_IDS = {"2.5.14":true, "3.1.8":true, "4.2.18":true, "3.2.15":true};
 var PRE_QPE_COMPLETE_IDS = {"1.5.7":true, "3.1.10":true, "5.1.12":true, "6.1.3":true, "6.3.4":true};
 var DASHBOARD_RELEASE_STATE = "LIVE";
@@ -224,6 +229,8 @@ function parseDashboardConfigCsv(text) {
 }
 function applyDashboardConfig(cfg) {
     cfg=cfg||{};
+    /* Reset source mutations left by any previously selected Registry row. */
+    SOURCE_URLS=Object.assign({}, COMPILED_SOURCE_URLS);
     if(cfg["current cycle"]) { CONFIG_CURRENT_CYCLE=cfg["current cycle"]; applyCycle(cfg["current cycle"]); }
     if(cfg["baseline cycle"]) { CYCLE.baseline=cfg["baseline cycle"]; CYCLE.baselineShort=shortQuarter(CYCLE.baseline); }
     if(cfg["active through"]) CYCLE.activeThrough=cfg["active through"];
@@ -238,6 +245,7 @@ function applyDashboardConfig(cfg) {
     if(cfg["pre-qpe backlogged ids"]) PRE_QPE_BACKLOGGED_IDS=idsToLookup(cfg["pre-qpe backlogged ids"]);
     if(cfg["pre-qpe complete ids"]) PRE_QPE_COMPLETE_IDS=idsToLookup(cfg["pre-qpe complete ids"]);
     if(cfg["release state"]) DASHBOARD_RELEASE_STATE=cfg["release state"].toUpperCase();
+    CONFIG_SOURCE_URLS=Object.assign({}, SOURCE_URLS);
 }
 function registryValue(v) {
     var s=String(v==null?"":v).trim();
@@ -310,14 +318,19 @@ function applyCycleRegistryRow(row, rows) {
     var prev=null;
     if(row.previousCycleKey) prev=rows.find(function(r){ return r.cycleKey===row.previousCycleKey; }) || null;
     if(!prev) prev=rows.find(function(r){ return r.cycleLabel===CYCLE.previous; }) || null;
-    SOURCE_URLS.planning=row.planningCsv || "";
-    SOURCE_URLS.previousPlanning=(prev && prev.planningCsv) || row.planningCsv || "";
-    if(row.goalsCsv) SOURCE_URLS.goals=row.goalsCsv;
-    SOURCE_URLS.capacity=row.capacityCsv || "";
-    if(row.roadmapCsv) SOURCE_URLS.roadmap=row.roadmapCsv;
-    if(row.psiMapCsv) SOURCE_URLS.psiUrls=row.psiMapCsv;
-    PRE_QPE_BACKLOGGED_IDS=idsToLookup(row.preQpeBackloggedIds||"");
-    PRE_QPE_COMPLETE_IDS=idsToLookup(row.preQpeCompleteIds||"");
+
+    /* Transitional inheritance is allowed only for the authoritative LIVE release row.
+       Historical rows must supply frozen Planning/Capacity sources so ARCHIVED
+       selections can never silently display current-cycle data. */
+    var isLiveReleaseRow=(row.state==="LIVE" && row.cycleLabel===CONFIG_CURRENT_CYCLE);
+    SOURCE_URLS.planning=row.planningCsv || (isLiveReleaseRow ? CONFIG_SOURCE_URLS.planning : "");
+    SOURCE_URLS.previousPlanning=(prev && prev.planningCsv) || row.planningCsv || (isLiveReleaseRow ? CONFIG_SOURCE_URLS.previousPlanning : "");
+    SOURCE_URLS.goals=row.goalsCsv || CONFIG_SOURCE_URLS.goals || "";
+    SOURCE_URLS.capacity=row.capacityCsv || (isLiveReleaseRow ? CONFIG_SOURCE_URLS.capacity : "");
+    SOURCE_URLS.roadmap=row.roadmapCsv || CONFIG_SOURCE_URLS.roadmap || "";
+    SOURCE_URLS.psiUrls=row.psiMapCsv || CONFIG_SOURCE_URLS.psiUrls || "";
+    PRE_QPE_BACKLOGGED_IDS=row.preQpeBackloggedIds ? idsToLookup(row.preQpeBackloggedIds) : (isLiveReleaseRow ? PRE_QPE_BACKLOGGED_IDS : {});
+    PRE_QPE_COMPLETE_IDS=row.preQpeCompleteIds ? idsToLookup(row.preQpeCompleteIds) : (isLiveReleaseRow ? PRE_QPE_COMPLETE_IDS : {});
     if(typeof setRoadmapAsOfDate === "function") setRoadmapAsOfDate(row.snapshotDate||"");
 }
 function validateCycleRegistryRows(rows, releasePointer) {
@@ -329,9 +342,10 @@ function validateCycleRegistryRows(rows, releasePointer) {
     if(!ptr) issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' has no matching row");
     else if(ptr.state!=="LIVE") issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' is "+ptr.state+", not LIVE");
     rows.forEach(function(r){
-        if(!r.planningCsv) issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank");
-        if(!r.goalsCsv) issues.push("Cycle Registry "+r.cycleLabel+": Goals CSV is blank");
-        if(!r.capacityCsv) issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank");
+        var isLiveReleaseRow=(r.state==="LIVE" && r.cycleLabel===releasePointer);
+        if(!r.planningCsv) issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank" + (isLiveReleaseRow ? "; Dashboard Config Planning CSV is being inherited" : "; add a frozen historical Planning CSV before using this archived cycle"));
+        if(!r.goalsCsv) issues.push("Cycle Registry "+r.cycleLabel+": Goals CSV is blank; Dashboard Config Goals CSV is being inherited");
+        if(!r.capacityCsv) issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank" + (isLiveReleaseRow ? "; Dashboard Config Capacity CSV is being inherited" : "; add a frozen historical Capacity Calculations CSV before using this archived cycle"));
     });
     return issues;
 }
