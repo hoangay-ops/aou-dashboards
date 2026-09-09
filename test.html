@@ -255,7 +255,7 @@ function parseCycleRegistryCsv(text) {
     var hi=0;
     for(var i=0;i<Math.min(rows.length,6);i++){
         var n=(rows[i]||[]).map(normHeader);
-        if(n.indexOf("cycle label")!==-1 || n.indexOf("cycle key")!==-1 || n.indexOf("cycle")!==-1 || n.indexOf("quarter")!==-1){ hi=i; break; }
+        if(n.indexOf("cycle label")!==-1 || n.indexOf("cycle key")!==-1){ hi=i; break; }
     }
     var header=rows[hi]||[], get=makeRowAccessor(header), out=[];
     rows.slice(hi+1).forEach(function(r){
@@ -265,7 +265,7 @@ function parseCycleRegistryCsv(text) {
         var order=parseInt(registryValue(get(r,"Display Order","Order")),10);
         out.push({
             cycleKey:key, cycleLabel:label, displayOrder:isNaN(order)?quarterKey(label):order,
-            state:(registryValue(get(r,"Cycle State","State","Release State"))||"ARCHIVED").toUpperCase(),
+            state:(registryValue(get(r,"State","Release State"))||"ARCHIVED").toUpperCase(),
             visibleToUsers:registryBool(get(r,"Visible to Users","Visible","Published")),
             previousCycleKey:registryValue(get(r,"Previous Cycle Key","Previous Cycle")),
             planningCsv:registryValue(get(r,"Planning CSV")),
@@ -303,7 +303,6 @@ function selectCycleRegistryRow(rows, requested, allowHidden) {
 function applyCycleRegistryRow(row, rows) {
     if(!row) return;
     rows=rows||[];
-    var isReleasePointer = row.cycleLabel === CONFIG_CURRENT_CYCLE;
     applyCycle(row.cycleLabel);
     SELECTED_CYCLE_KEY=row.cycleKey;
     SELECTED_CYCLE_STATE=row.state||"ARCHIVED";
@@ -311,26 +310,14 @@ function applyCycleRegistryRow(row, rows) {
     var prev=null;
     if(row.previousCycleKey) prev=rows.find(function(r){ return r.cycleKey===row.previousCycleKey; }) || null;
     if(!prev) prev=rows.find(function(r){ return r.cycleLabel===CYCLE.previous; }) || null;
-
-    /* Staged-migration rule: Registry values are overrides, never destructive blanks.
-       A minimal Registry can therefore contain only Cycle / Cycle State / Visible.
-       Until a per-cycle source is supplied, the already-loaded Dashboard Config
-       source remains in effect. This keeps the current dashboard working while
-       historical sources are added incrementally. */
-    if(row.planningCsv) SOURCE_URLS.planning=row.planningCsv;
-
-    if(prev && prev.planningCsv) SOURCE_URLS.previousPlanning=prev.planningCsv;
-
+    SOURCE_URLS.planning=row.planningCsv || "";
+    SOURCE_URLS.previousPlanning=(prev && prev.planningCsv) || row.planningCsv || "";
     if(row.goalsCsv) SOURCE_URLS.goals=row.goalsCsv;
-
-    if(row.capacityCsv) SOURCE_URLS.capacity=row.capacityCsv;
-
+    SOURCE_URLS.capacity=row.capacityCsv || "";
     if(row.roadmapCsv) SOURCE_URLS.roadmap=row.roadmapCsv;
     if(row.psiMapCsv) SOURCE_URLS.psiUrls=row.psiMapCsv;
-
-    if(row.preQpeBackloggedIds) PRE_QPE_BACKLOGGED_IDS=idsToLookup(row.preQpeBackloggedIds);
-    if(row.preQpeCompleteIds) PRE_QPE_COMPLETE_IDS=idsToLookup(row.preQpeCompleteIds);
-
+    PRE_QPE_BACKLOGGED_IDS=idsToLookup(row.preQpeBackloggedIds||"");
+    PRE_QPE_COMPLETE_IDS=idsToLookup(row.preQpeCompleteIds||"");
     if(typeof setRoadmapAsOfDate === "function") setRoadmapAsOfDate(row.snapshotDate||"");
 }
 function validateCycleRegistryRows(rows, releasePointer) {
@@ -342,11 +329,9 @@ function validateCycleRegistryRows(rows, releasePointer) {
     if(!ptr) issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' has no matching row");
     else if(ptr.state!=="LIVE") issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' is "+ptr.state+", not LIVE");
     rows.forEach(function(r){
-        var isReleasePointer = r.cycleLabel===releasePointer;
-        /* The current cycle can inherit source URLs from Dashboard Config. Other
-           selectable cycles need explicit Planning and Capacity sources. */
-        if(!isReleasePointer && r.visibleToUsers && !r.planningCsv) issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank; Dashboard Config source is being inherited (not a frozen historical view yet)");
-        if(!isReleasePointer && r.visibleToUsers && !r.capacityCsv) issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank; Dashboard Config source is being inherited (not a frozen historical view yet)");
+        if(!r.planningCsv) issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank");
+        if(!r.goalsCsv) issues.push("Cycle Registry "+r.cycleLabel+": Goals CSV is blank");
+        if(!r.capacityCsv) issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank");
     });
     return issues;
 }
@@ -1201,7 +1186,7 @@ function useDataLoader() {
             var requiredFailure=Object.keys(required).find(function(name){ return !health[name] || !health[name].ok; });
             if(requiredFailure){
                 var label=requiredFailure === "planning" ? "Planning" : requiredFailure === "goals" ? "Goals" : requiredFailure;
-                throw new Error("Required source unavailable: " + label + ((health[requiredFailure] && health[requiredFailure].error) ? " — " + health[requiredFailure].error : ""));
+                throw new Error("Required source unavailable: " + label);
             }
             var degraded=Object.keys(health).some(function(k){ return !health[k].ok; });
             var selected=bundle.meta.selected;
@@ -1401,24 +1386,13 @@ function qpeParseRank(v) {
     return isNaN(n) ? null : n;
 }
 function qpeQuarterParts(label) {
-    var m = String(label || "").match(/Q([1-4])\s*(?:'|’)?(\d{2}|\d{4})/i);
+    var m = String(label || "").match(/Q([1-4])\s*(?:'|’)?(\d{4}|\d{2})/i);
     if (!m)
         return null;
     var y = parseInt(m[2], 10);
     if (y < 100)
         y += 2000;
     return { q: parseInt(m[1], 10), year: y, shortYear: String(y).slice(2) };
-}
-function qpeCycleOrdinal(label) {
-    var p = qpeQuarterParts(label);
-    return p ? (p.year * 4 + p.q) : null;
-}
-function qpeEnteredAfterSelectedCycle(enteredPortfolio, selectedCycle) {
-    var enteredOrd = qpeCycleOrdinal(enteredPortfolio);
-    var selectedOrd = qpeCycleOrdinal(selectedCycle);
-    if (enteredOrd == null || selectedOrd == null)
-        return false;
-    return enteredOrd > selectedOrd;
 }
 function qpeValueForQuarterStatus(headerRow, row, quarterLabel, fallbackAccessor, aliases) {
     aliases = aliases || [];
@@ -1647,13 +1621,6 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
         var name = get(row, "Initiative Name", "Name");
         if (!id || !name)
             return;
-        /* Rolling Planning Master guard: future-cycle initiatives may already exist
-           in the live sheet during portfolio preparation. Do not expose an initiative
-           in an earlier selected cycle when Entered Portfolio is later than that cycle.
-           Blank/unparseable values remain visible for legacy backfill compatibility. */
-        var enteredPortfolio = get(row, "Entered Portfolio", "Portfolio Entry Cycle", "Entered Cycle");
-        if (qpeEnteredAfterSelectedCycle(enteredPortfolio, CYCLE.current))
-            return;
         var goalRaw = get(row, "5 year Goal", "Goal", "5-year Goal");
         var goalMatch = String(goalRaw).match(/(\d)/);
         var goal = goalMatch ? goalMatch[1] : "";
@@ -1703,7 +1670,6 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
             history: history, previousRank: q2r, currentRank: q3r,
             isNew: /^new\b/i.test(pt),
             projectType: pt,
-            enteredPortfolio: enteredPortfolio,
             decisionPoint: get(row, "Decision Point", "Disposition Point"),
             fullDesc: get(row, "Initiative Full Description", "Full Description", "Description"),
             shortDesc: get(row, "Short Description (for publishing)", "Short Description") ||
