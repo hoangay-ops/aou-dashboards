@@ -3643,20 +3643,24 @@ function setRoadmapAsOfDate(value) {
     RM_TODAY=d || new Date();
 }
 function rmDefaultRange() {
-    /* Anchor the roadmap viewport to the selected dashboard cycle rather than
-       the current calendar month. All cycles may continue to share the same
-       Roadmap CSV; changing cycles only changes the visible timeline window. */
+    /* LIVE current cycle follows the actual calendar date so the roadmap opens
+       at the present month even when the planning cycle starts next quarter.
+       ARCHIVED/PREP cycles anchor to the first month of the selected quarter. */
+    var state = String(SELECTED_CYCLE_STATE || DASHBOARD_RELEASE_STATE || "").toUpperCase();
+    var isLiveCurrent = state === "LIVE" && CYCLE.current === CONFIG_CURRENT_CYCLE;
     var selected = cycleParts(CYCLE.current);
-    var startY, startM;
-    if (selected) {
-        startY = selected.year;
-        startM = (selected.q - 1) * 3;
-    } else {
+    var startY, startM, endDate;
+    if (isLiveCurrent || !selected) {
         var now = new Date(RM_TODAY.getTime());
         startY = now.getFullYear();
-        startM = Math.floor(now.getMonth() / 3) * 3;
+        startM = now.getMonth();
+        var currentQuarterEndM = Math.floor(startM / 3) * 3 + 2;
+        endDate = new Date(startY, currentQuarterEndM + 9, 1);
+    } else {
+        startY = selected.year;
+        startM = (selected.q - 1) * 3;
+        endDate = new Date(startY, startM + 11, 1);
     }
-    var endDate = new Date(startY, startM + 11, 1);
     var fmt = function (y, m) { return y + "-" + String(m + 1).padStart(2, "0"); };
     return { start: fmt(startY, startM), end: fmt(endDate.getFullYear(), endDate.getMonth()) };
 }
