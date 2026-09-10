@@ -2529,17 +2529,16 @@ function QpeView(props) {
 /* ════════════════════════════════════════════════════════════════════════════
    CAPACITY VIEW
    ════════════════════════════════════════════════════════════════════════════ */
-/* Canonical team order per Dashboard Consistency Spec.
-   21 teams (12 NIH + 9 awardees) after Q3 2026 changes: Innovation retired;
-   DRC: RDR and DRC: Curation merged into DRC: RDR/Data.
-   Note: Product appears before Policy in the actual sheet (differs from spec
-   document); array order matches the sheet so drill-down attribution is correct. */
+/* Current Capacity teams. Physical CSV blocks are discovered by header rather than
+   assumed contiguous positions, so retained legacy blocks (for example DRC: Curation)
+   can remain in the workbook without corrupting team attribution. */
 const CAP_TEAMS = [
-    "Chief of Staff", "COO", "DCD", "DMSR", "DMSR (ODA)", "Engagement", "OFM", "TPC",
-    "Product", "Policy", "UX", "DTPD", "BioBank",
+    "Chief of Staff", "COO", "DCD", "DMSR", "DMSR (ODA)", "Engagement", "OFM", "Policy",
+    "Product", "TPC", "UX", "DTPD", "BioBank",
     "DRC: Analytics", "DRC: RDR/Data", "DRC: HealthPro", "DRC: Public", "DRC: Workbench",
     "PPSC: NORC", "PPSC: IBM", "PPSC: Support Center"
 ];
+const CAP_LEGACY_TEAMS = ["DRC: Curation", "Innovation", "DRC: RDR", "GCR", "NORC"];
 const CAP_TEAM_COL_START = 13;
 const CAP_LOE_LABEL = { "1": "XS", "2": "S", "3": "M", "5": "L", "8": "XL", "13": "XXL", "21": "XXXL" };
 const CAP_STAFF_CFG = {
@@ -2547,6 +2546,63 @@ const CAP_STAFF_CFG = {
     "P": { label: "Possibly", color: "#B7950B", bg: "#fefaec" },
     "N": { label: "No Capacity", color: "#C0392B", bg: "#fdf2f2" },
 };
+function capNormTeamName(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function capDiscoverTeamBlocks(rows, hi) {
+    var currentKnown = {};
+    CAP_TEAMS.forEach(function (name) { currentKnown[capNormTeamName(name)] = name; });
+    var legacyKnown = {};
+    CAP_LEGACY_TEAMS.forEach(function (name) { legacyKnown[capNormTeamName(name)] = name; });
+    var maxCol = 0;
+    for (var r = 0; r <= hi && r < rows.length; r++)
+        maxCol = Math.max(maxCol, (rows[r] || []).length);
+    var mapping = {};
+    var duplicates = [];
+    var legacyBlocks = [];
+    var blocks = [];
+    var scanStartRow = Math.max(0, hi - 4);
+    for (var base = CAP_TEAM_COL_START, pos = 1; base < maxCol; base += 5, pos++) {
+        var foundCurrent = "";
+        var foundLegacy = "";
+        var headerText = [];
+        for (var rr = scanStartRow; rr < hi; rr++) {
+            var row = rows[rr] || [];
+            for (var cc = base; cc < Math.min(base + 5, row.length); cc++) {
+                var raw = String(row[cc] || "").trim();
+                if (!raw)
+                    continue;
+                if (headerText.indexOf(raw) < 0)
+                    headerText.push(raw);
+                var norm = capNormTeamName(raw);
+                if (!foundCurrent && currentKnown[norm])
+                    foundCurrent = currentKnown[norm];
+                if (!foundLegacy && legacyKnown[norm])
+                    foundLegacy = legacyKnown[norm];
+            }
+        }
+        var kind = foundCurrent ? "current" : (foundLegacy ? "legacy" : "unknown");
+        var name = foundCurrent || foundLegacy || "";
+        blocks.push({ position: pos, base: base, kind: kind, name: name, headerText: headerText });
+        if (foundCurrent) {
+            if (mapping[foundCurrent] != null)
+                duplicates.push(foundCurrent);
+            else
+                mapping[foundCurrent] = base;
+        }
+        else if (foundLegacy) {
+            legacyBlocks.push({ name: foundLegacy, base: base, position: pos });
+        }
+    }
+    var missing = CAP_TEAMS.filter(function (name) { return mapping[name] == null; });
+    var mismatches = [];
+    if (missing.length)
+        mismatches.push("Missing current Capacity team block(s): " + missing.join(", "));
+    if (duplicates.length)
+        mismatches.push("Duplicate current Capacity team block(s): " + Array.from(new Set(duplicates)).join(", "));
+    return { map: mapping, blocks: blocks, legacyBlocks: legacyBlocks, missing: missing, duplicates: duplicates, mismatches: mismatches };
+}
+
 const CAP_CI_METHODOLOGY = "Confidence Index = weighted sum ÷ performers. Definitely +1.0, Possibly XS/S +0.8, Possibly M 0, Possibly L/XL −0.5, No Capacity −1.0. Thresholds: 8–10 on track, 6–7 monitor, ≤5 at risk.";
 function capCiTier(n) { if (n == null)
     return "none"; if (n >= 8)
@@ -2702,26 +2758,8 @@ function capParseCapacity(csvText) {
             break;
         }
     }
-    var mismatches = [];
-    function findCellAbove(col, maxScan) {
-        var limit = Math.max(0, hi - (maxScan || 3));
-        for (var r = hi - 1; r >= limit; r--) {
-            var cell = String((rows[r] || [])[col] || "").trim();
-            if (cell)
-                return cell;
-        }
-        return "";
-    }
-    CAP_TEAMS.forEach(function (expected, idx) {
-        var col = CAP_TEAM_COL_START + (idx * 5);
-        var found = findCellAbove(col, 3);
-        if (found && found.toLowerCase() !== expected.toLowerCase()) {
-            var norm = function (s) { return s.toLowerCase().replace(/[^a-z0-9]/g, ""); };
-            if (norm(found) !== norm(expected)) {
-                mismatches.push("Position " + (idx + 1) + " (col " + col + "): expected '" + expected + "', sheet shows '" + found + "'");
-            }
-        }
-    });
+    var teamLayout = capDiscoverTeamBlocks(rows, hi);
+    var mismatches = teamLayout.mismatches.slice();
     var get = makeRowAccessor(rows[hi]);
     var body = rows.slice(hi + 1);
     var map = {};
@@ -2735,9 +2773,9 @@ function capParseCapacity(csvText) {
         var cm = lbl.match(/(\d+)/);
         function int(k) { return parseInt(get(row, k)) || 0; }
         var performers = [];
-        CAP_TEAMS.forEach(function (name, i) {
-            var base = CAP_TEAM_COL_START + (i * 5);
-            if (base >= row.length)
+        CAP_TEAMS.forEach(function (name) {
+            var base = teamLayout.map[name];
+            if (base == null || base >= row.length)
                 return;
             var isPerformer = String(row[base] || "").trim() === "1";
             if (!isPerformer)
