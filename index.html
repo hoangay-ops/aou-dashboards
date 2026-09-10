@@ -159,13 +159,26 @@ var CYCLE = {
     previousShort: "Q2 '26",
     baselineShort: "Q4 '25",
 };
+/* Cycle Registry bridge. Dashboard Config remains the release control plane;
+   the registry supplies per-cycle data sources and historical navigation. */
+var CONFIG_CURRENT_CYCLE = CYCLE.current;
+var CYCLE_REGISTRY_CSV_URL = "";
+var SELECTED_CYCLE_KEY = "";
+var SELECTED_CYCLE_STATE = "";
+var SELECTED_CYCLE_SNAPSHOT_DATE = "";
 var SOURCE_URLS = {
     planning: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTFUiVPhIMgZnBSRzZaHeu-tYfaCnUbwqQzG7W4Rg8YG56_MoFUg898JjZOjsDkx3wGyp1ZLRlI2fM/pub?gid=0&single=true&output=csv",
     previousPlanning: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=0&single=true&output=csv",
     goals: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3uNKjiErriTzB7r258GdfQdeXVhzjbfG4VZr5J0u9ZMj9punGsNHbnzeaGyuiC3-VT1cUHAqrOSXI/pub?gid=1157686184&single=true&output=csv",
     capacity: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRBMoz4Ih_0AkKsm0qr1xfM4tkppaQqFJVWJ8IE6tmSO99MmxUOW8scahb2ljMapz_lPO_4Q_EaKDR8/pub?gid=910516878&single=true&output=csv",
+    roadmap: "",
     psiUrls: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRdDL-Nc8nz2_SPI_ZbsCxkF5rP3T4nkJLVYKEwRIl-RDAuy3l0Dscs-jLpfIhqCdHgBwIZARQ1zqoG/pub?gid=263432553&single=true&output=csv"
 };
+/* Preserve compiled defaults separately so every reload starts from a clean base.
+   Dashboard Config is then applied on top, and the LIVE Registry row may inherit
+   those configured sources during migration when its per-cycle cells are blank. */
+var COMPILED_SOURCE_URLS = Object.assign({}, SOURCE_URLS);
+var CONFIG_SOURCE_URLS = Object.assign({}, SOURCE_URLS);
 var PRE_QPE_BACKLOGGED_IDS = {"2.5.14":true, "3.1.8":true, "4.2.18":true, "3.2.15":true};
 var PRE_QPE_COMPLETE_IDS = {"1.5.7":true, "3.1.10":true, "5.1.12":true, "6.1.3":true, "6.3.4":true};
 var DASHBOARD_RELEASE_STATE = "LIVE";
@@ -216,17 +229,143 @@ function parseDashboardConfigCsv(text) {
 }
 function applyDashboardConfig(cfg) {
     cfg=cfg||{};
-    if(cfg["current cycle"]) applyCycle(cfg["current cycle"]);
+    /* Reset source mutations left by any previously selected Registry row. */
+    SOURCE_URLS=Object.assign({}, COMPILED_SOURCE_URLS);
+    if(cfg["current cycle"]) { CONFIG_CURRENT_CYCLE=cfg["current cycle"]; applyCycle(cfg["current cycle"]); }
     if(cfg["baseline cycle"]) { CYCLE.baseline=cfg["baseline cycle"]; CYCLE.baselineShort=shortQuarter(CYCLE.baseline); }
     if(cfg["active through"]) CYCLE.activeThrough=cfg["active through"];
     if(cfg["planning csv"]) SOURCE_URLS.planning=cfg["planning csv"];
     if(cfg["previous planning csv"]) SOURCE_URLS.previousPlanning=cfg["previous planning csv"];
     if(cfg["goals csv"]) SOURCE_URLS.goals=cfg["goals csv"];
     if(cfg["capacity csv"]) SOURCE_URLS.capacity=cfg["capacity csv"];
+    if(cfg["roadmap csv"]) SOURCE_URLS.roadmap=cfg["roadmap csv"];
     if(cfg["psi urls csv"]) SOURCE_URLS.psiUrls=cfg["psi urls csv"];
+    if(cfg["cycle registry csv"]) CYCLE_REGISTRY_CSV_URL=cfg["cycle registry csv"];
+    else if(cfg["cycle registry url"]) CYCLE_REGISTRY_CSV_URL=cfg["cycle registry url"];
     if(cfg["pre-qpe backlogged ids"]) PRE_QPE_BACKLOGGED_IDS=idsToLookup(cfg["pre-qpe backlogged ids"]);
     if(cfg["pre-qpe complete ids"]) PRE_QPE_COMPLETE_IDS=idsToLookup(cfg["pre-qpe complete ids"]);
     if(cfg["release state"]) DASHBOARD_RELEASE_STATE=cfg["release state"].toUpperCase();
+    CONFIG_SOURCE_URLS=Object.assign({}, SOURCE_URLS);
+}
+function registryValue(v) {
+    var s=String(v==null?"":v).trim();
+    if(/^<.*>$/.test(s)) return "";
+    return s;
+}
+function registryBool(v) { return /^(1|true|yes|y)$/i.test(registryValue(v)); }
+function cycleKeyFromLabel(label) {
+    var p=cycleParts(label);
+    return p ? ("q"+p.q+"-"+p.year) : String(label||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
+}
+function parseCycleRegistryCsv(text) {
+    var rows=parseCSV(text||"");
+    if(!rows.length) return [];
+    var hi=0;
+    for(var i=0;i<Math.min(rows.length,6);i++){
+        var n=(rows[i]||[]).map(normHeader);
+        if(n.indexOf("cycle label")!==-1 || n.indexOf("cycle key")!==-1){ hi=i; break; }
+    }
+    var header=rows[hi]||[], get=makeRowAccessor(header), out=[];
+    rows.slice(hi+1).forEach(function(r){
+        var label=registryValue(get(r,"Cycle Label","Cycle","Quarter"));
+        var key=registryValue(get(r,"Cycle Key","Key")) || cycleKeyFromLabel(label);
+        if(!label || !cycleParts(label) || !key) return;
+        var order=parseInt(registryValue(get(r,"Display Order","Order")),10);
+        out.push({
+            cycleKey:key, cycleLabel:label, displayOrder:isNaN(order)?quarterKey(label):order,
+            state:(registryValue(get(r,"State","Release State"))||"ARCHIVED").toUpperCase(),
+            visibleToUsers:registryBool(get(r,"Visible to Users","Visible","Published")),
+            previousCycleKey:registryValue(get(r,"Previous Cycle Key","Previous Cycle")),
+            planningCsv:registryValue(get(r,"Planning CSV")),
+            capacityCsv:registryValue(get(r,"Capacity Calculations CSV","Capacity CSV")),
+            capacitySpreadsheetId:registryValue(get(r,"Capacity Spreadsheet ID")),
+            capacityDeadline:registryValue(get(r,"Capacity Deadline")),
+            goalsCsv:registryValue(get(r,"Goals CSV")),
+            roadmapCsv:registryValue(get(r,"Roadmap CSV")),
+            psiMapCsv:registryValue(get(r,"PSI Map CSV","PSI URLs CSV","PSI CSV")),
+            preQpeBackloggedIds:registryValue(get(r,"Pre-QPE Backlogged IDs")),
+            preQpeCompleteIds:registryValue(get(r,"Pre-QPE Complete IDs")),
+            snapshotDate:registryValue(get(r,"Snapshot Date","Roadmap As Of Date","As Of Date")),
+            notes:registryValue(get(r,"Notes"))
+        });
+    });
+    return out.sort(function(a,b){ return a.displayOrder-b.displayOrder; });
+}
+function findRegistryCycle(rows, requested, allowHidden) {
+    rows=rows||[]; requested=String(requested||"").trim();
+    var reqNorm=requested.toLowerCase();
+    var hit=rows.find(function(r){ return r.cycleKey.toLowerCase()===reqNorm || r.cycleLabel.toLowerCase()===reqNorm || cycleKeyFromLabel(r.cycleLabel)===reqNorm; });
+    if(hit && (allowHidden || hit.visibleToUsers)) return hit;
+    return null;
+}
+function selectCycleRegistryRow(rows, requested, allowHidden) {
+    var hit=findRegistryCycle(rows,requested,allowHidden);
+    if(hit) return hit;
+    hit=findRegistryCycle(rows,CONFIG_CURRENT_CYCLE,allowHidden);
+    if(hit) return hit;
+    hit=rows.find(function(r){ return r.state==="LIVE" && (allowHidden || r.visibleToUsers); });
+    if(hit) return hit;
+    var candidates=rows.filter(function(r){ return allowHidden || r.visibleToUsers; });
+    return candidates.length ? candidates[candidates.length-1] : null;
+}
+function applyCycleRegistryRow(row, rows) {
+    if(!row) return;
+    rows=rows||[];
+    applyCycle(row.cycleLabel);
+    SELECTED_CYCLE_KEY=row.cycleKey;
+    SELECTED_CYCLE_STATE=row.state||"ARCHIVED";
+    SELECTED_CYCLE_SNAPSHOT_DATE=row.snapshotDate||"";
+    var prev=null;
+    if(row.previousCycleKey) prev=rows.find(function(r){ return r.cycleKey===row.previousCycleKey; }) || null;
+    if(!prev) prev=rows.find(function(r){ return r.cycleLabel===CYCLE.previous; }) || null;
+
+    /* Transitional inheritance is allowed only for the authoritative LIVE release row.
+       Historical rows must supply frozen Planning/Capacity sources so ARCHIVED
+       selections can never silently display current-cycle data. */
+    var isLiveReleaseRow=(row.state==="LIVE" && row.cycleLabel===CONFIG_CURRENT_CYCLE);
+    SOURCE_URLS.planning=row.planningCsv || (isLiveReleaseRow ? CONFIG_SOURCE_URLS.planning : "");
+    SOURCE_URLS.previousPlanning=(prev && prev.planningCsv) || row.planningCsv || (isLiveReleaseRow ? CONFIG_SOURCE_URLS.previousPlanning : "");
+    SOURCE_URLS.goals=row.goalsCsv || CONFIG_SOURCE_URLS.goals || "";
+    SOURCE_URLS.capacity=row.capacityCsv || (isLiveReleaseRow ? CONFIG_SOURCE_URLS.capacity : "");
+    SOURCE_URLS.roadmap=row.roadmapCsv || CONFIG_SOURCE_URLS.roadmap || "";
+    SOURCE_URLS.psiUrls=row.psiMapCsv || CONFIG_SOURCE_URLS.psiUrls || "";
+    PRE_QPE_BACKLOGGED_IDS=row.preQpeBackloggedIds ? idsToLookup(row.preQpeBackloggedIds) : (isLiveReleaseRow ? PRE_QPE_BACKLOGGED_IDS : {});
+    PRE_QPE_COMPLETE_IDS=row.preQpeCompleteIds ? idsToLookup(row.preQpeCompleteIds) : (isLiveReleaseRow ? PRE_QPE_COMPLETE_IDS : {});
+    if(typeof setRoadmapAsOfDate === "function") setRoadmapAsOfDate(row.snapshotDate||"");
+}
+function validateCycleRegistryRows(rows, releasePointer) {
+    var issues=[];
+    if(!rows || !rows.length) return issues;
+    var live=rows.filter(function(r){return r.state==="LIVE";});
+    if(live.length!==1) issues.push("Cycle Registry: expected exactly one LIVE row; found "+live.length);
+    var ptr=rows.find(function(r){return r.cycleLabel===releasePointer;});
+    if(!ptr) issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' has no matching row");
+    else if(ptr.state!=="LIVE") issues.push("Cycle Registry: Current Cycle '"+releasePointer+"' is "+ptr.state+", not LIVE");
+
+    /* Row-level source warnings are reserved for genuine release/history gaps.
+       - LIVE may intentionally inherit current sources from Dashboard Config.
+       - PREP rows are allowed to be incomplete while hidden from normal users.
+       - ARCHIVED rows must carry frozen Planning and Capacity sources so a
+         historical selection can never silently display current-cycle data.
+       Goals may intentionally inherit the shared reference source. */
+    rows.forEach(function(r){
+        var state=String(r.state||"").toUpperCase();
+        var isLiveReleaseRow=(state==="LIVE" && r.cycleLabel===releasePointer);
+        if(isLiveReleaseRow){
+            if(!r.planningCsv && !CONFIG_SOURCE_URLS.planning)
+                issues.push("Cycle Registry "+r.cycleLabel+": no Planning CSV is configured in either the Registry or Dashboard Config");
+            if(!r.capacityCsv && !CONFIG_SOURCE_URLS.capacity)
+                issues.push("Cycle Registry "+r.cycleLabel+": no Capacity Calculations CSV is configured in either the Registry or Dashboard Config");
+            return;
+        }
+        if(state==="ARCHIVED"){
+            if(!r.planningCsv)
+                issues.push("Cycle Registry "+r.cycleLabel+": Planning CSV is blank; add a frozen historical Planning CSV before using this archived cycle");
+            if(!r.capacityCsv)
+                issues.push("Cycle Registry "+r.cycleLabel+": Capacity Calculations CSV is blank; add a frozen historical Capacity Calculations CSV before using this archived cycle");
+        }
+    });
+    return issues;
 }
 /* Legacy aliases retained so the rest of the compiled bundle remains compatible. */
 function planningCsvUrl(){ return SOURCE_URLS.planning; }
@@ -238,6 +377,7 @@ const ROADMAP_SHEET_ID = "1UAVBmkBC1l-Pnp5UMe_72FTjv_03Xwe9fcgu5nHPcQg";
 const ROADMAP_SHEET_GID = "0";
 const ROADMAP_PUBLISHED_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRr51VQ4ujPMXvw_OkJ_76flVbz5zy3CVjyW6-bwX2Q6B6UJ6lzuKzDaEuZQhwzIMOTpx8sXImEk_L-/pub?gid=" + ROADMAP_SHEET_GID + "&single=true&output=csv";
 const ROADMAP_EXPORT_CSV = "https://docs.google.com/spreadsheets/d/" + ROADMAP_SHEET_ID + "/export?format=csv&gid=" + ROADMAP_SHEET_GID + "&single=true";
+function roadmapCsvUrl(){ return SOURCE_URLS.roadmap || ROADMAP_PUBLISHED_CSV; }
 /* Canonical Goals per Dashboard Consistency Spec §2.4 and §6. */
 const GOALS = {
     "1": { num: "1", name: "Enrollment & Retention", short: "Enrollment & Retention", color: "#5EAEE0" },
@@ -613,19 +753,18 @@ function detectCycleDrift(planningCsv, expectedCycle) {
         }
     }
     var header = rows[hi] || [];
-    var sheetQuarter = null;
+    var sheetQuarter = null, expectedFound = false;
     for (var i = 0; i < header.length; i++) {
         var h = normHeader(header[i]);
         var m = h.match(/^q(\d)\s*(\d{4})\s*status/);
         if (m) {
             var label = "Q" + m[1] + " " + m[2];
+            if (label === expectedCycle) expectedFound = true;
             if (!sheetQuarter || quarterKey(label) > quarterKey(sheetQuarter))
                 sheetQuarter = label;
         }
     }
-    if (!sheetQuarter)
-        return null;
-    if (sheetQuarter === expectedCycle)
+    if (expectedFound || !sheetQuarter)
         return null;
     return { expected: expectedCycle, found: sheetQuarter };
 }
@@ -935,9 +1074,7 @@ function CycleDriftBanner(props) {
                     React.createElement("strong", null, props.drift.expected),
                     ", sheet shows ",
                     React.createElement("strong", null, props.drift.found),
-                    ". Update the ",
-                    React.createElement("code", { style: { background: "#fff", padding: "1px 4px", borderRadius: 3, fontFamily: "monospace" } }, "CYCLE"),
-                    " constant in the dashboard code, or rotate the planning sheet headers to match. Until aligned, all three dashboards may show stale data.")),
+                    ". Check the selected Cycle Registry row and confirm its Planning CSV contains the expected quarter-specific Status column. Until aligned, all three dashboards may show incomplete or stale data.")),
             props.onDismiss && (React.createElement("button", { onClick: props.onDismiss, title: "Dismiss", style: { border: "none", background: "none", color: "#7D6608", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: "0 4px", flexShrink: 0 } }, "\u00D7")))));
 }
 function SchemaValidationBanner(props) {
@@ -988,10 +1125,11 @@ function aouWriteSessionCache(url, text) {
 }
 function useDataLoader() {
     var [state, setState] = useState({
-        status: "loading", health: "loading", error: "", loadedAt: null, configLoaded: false,
+        status: "loading", health: "loading", error: "", loadedAt: null, configLoaded: false, registryLoaded: false,
         sourceHealth: {}, planningCsv: "", previousPlanningCsv: "", goalsCsv: "", capacityCsv: "", roadmapCsv: "", psiUrlsCsv: "",
+        registry: [], selectedCycleKey: "", selectedCycleLabel: CYCLE.current, selectedCycleState: "", releasePointer: CONFIG_CURRENT_CYCLE
     });
-    var load = useCallback(function (forceFresh) {
+    var load = useCallback(function (forceFresh, cycleOverride) {
         forceFresh = forceFresh === true;
         setState(function (s) { return Object.assign({}, s, { status: "loading", health: "loading", error: "" }); });
 
@@ -1012,19 +1150,42 @@ function useDataLoader() {
             });
         }
         function loadConfig() {
-            if (!DASHBOARD_CONFIG_CSV_URL) return Promise.resolve(false);
+            if (!DASHBOARD_CONFIG_CSV_URL) return Promise.resolve({ loaded:false, cfg:{} });
             return fetchText(DASHBOARD_CONFIG_CSV_URL).then(function(t){
-                applyDashboardConfig(parseDashboardConfigCsv(t));
-                return true;
+                var cfg=parseDashboardConfigCsv(t);
+                applyDashboardConfig(cfg);
+                return { loaded:true, cfg:cfg };
+            });
+        }
+        function registryUrlFromQuery() {
+            try { return new URLSearchParams(window.location.search || "").get("registry") || ""; }
+            catch(e) { return ""; }
+        }
+        function requestedCycle() {
+            if (cycleOverride) return cycleOverride;
+            try { return new URLSearchParams(window.location.search || "").get("cycle") || ""; }
+            catch(e) { return ""; }
+        }
+        function loadRegistry(configBundle) {
+            var registryUrl=registryUrlFromQuery() || CYCLE_REGISTRY_CSV_URL;
+            if(!registryUrl) {
+                SELECTED_CYCLE_KEY=cycleKeyFromLabel(CYCLE.current);
+                SELECTED_CYCLE_STATE=DASHBOARD_RELEASE_STATE;
+                return Promise.resolve({ configBundle:configBundle, registryLoaded:false, registry:[], selected:null });
+            }
+            return fetchText(registryUrl).then(function(t){
+                var rows=parseCycleRegistryCsv(t);
+                if(!rows.length) throw new Error("Cycle Registry is empty or has no valid cycle rows");
+                var selected=selectCycleRegistryRow(rows,requestedCycle(),IS_ADMIN);
+                if(!selected) throw new Error("No selectable cycle found in Cycle Registry");
+                applyCycleRegistryRow(selected,rows);
+                return { configBundle:configBundle, registryLoaded:true, registry:rows, selected:selected };
             });
         }
         function optional(name, promise) {
             return promise.then(function(text){ return {name:name,ok:true,text:text}; }).catch(function(err){ return {name:name,ok:false,text:"",error:err.message||String(err)}; });
         }
         function requestedSources() {
-            /* The combined dashboard keeps preloading every source because users can
-               switch tabs without another network wait. Standalone pages fetch only
-               what their view can consume. */
             if (!IS_SINGLE_VIEW) return ["planning","previousPlanning","goals","capacity","roadmap","psiUrls"];
             if (SINGLE_VIEW_MODE === "qpe") return ["planning","previousPlanning","goals","capacity","psiUrls"];
             if (SINGLE_VIEW_MODE === "capacity") return ["planning","goals","capacity","psiUrls"];
@@ -1036,34 +1197,53 @@ function useDataLoader() {
             if (name === "previousPlanning") return fetchText(previousPlanningCsvUrl());
             if (name === "goals") return fetchText(goalsCsvUrl());
             if (name === "capacity") return fetchText(capacityCsvUrl());
-            if (name === "roadmap") return fetchText(ROADMAP_PUBLISHED_CSV).catch(function(){ return fetchText(ROADMAP_EXPORT_CSV); });
+            if (name === "roadmap") {
+                var primary=roadmapCsvUrl();
+                if(primary && primary!==ROADMAP_PUBLISHED_CSV) return fetchText(primary);
+                return fetchText(ROADMAP_PUBLISHED_CSV).catch(function(){ return fetchText(ROADMAP_EXPORT_CSV); });
+            }
             if (name === "psiUrls") return fetchText(psiUrlsCsvUrl());
             return Promise.reject(new Error("Unknown source: " + name));
         }
-        loadConfig().then(function(configLoaded){
-            var names = requestedSources();
+        loadConfig().then(loadRegistry).then(function(meta){
+            var names=requestedSources();
             return Promise.all(names.map(function(name){ return optional(name, sourcePromise(name)); }))
-                .then(function(results){ return {configLoaded:configLoaded, results:results, requested:names}; });
+                .then(function(results){ return {meta:meta, results:results, requested:names}; });
         }).then(function(bundle){
             var by={ planning:"", previousPlanning:"", goals:"", capacity:"", roadmap:"", psiUrls:"" };
             var health={};
             bundle.results.forEach(function(r){ by[r.name]=r.text; health[r.name]={ok:r.ok,error:r.error||""}; });
-
-            var required = { planning:true };
-            if (!IS_SINGLE_VIEW || SINGLE_VIEW_MODE === "qpe" || SINGLE_VIEW_MODE === "capacity") required.goals = true;
-            var requiredFailure = Object.keys(required).find(function(name){ return !health[name] || !health[name].ok; });
-            if (requiredFailure) {
-                var label = requiredFailure === "planning" ? "Planning" : requiredFailure === "goals" ? "Goals" : requiredFailure;
+            var required={ planning:true };
+            if (!IS_SINGLE_VIEW || SINGLE_VIEW_MODE === "qpe" || SINGLE_VIEW_MODE === "capacity") required.goals=true;
+            var requiredFailure=Object.keys(required).find(function(name){ return !health[name] || !health[name].ok; });
+            if(requiredFailure){
+                var label=requiredFailure === "planning" ? "Planning" : requiredFailure === "goals" ? "Goals" : requiredFailure;
                 throw new Error("Required source unavailable: " + label);
             }
-            var degraded = Object.keys(health).some(function(k){ return !health[k].ok; });
-            setState({ status:"ready", health:degraded?"degraded":"live", error:"", loadedAt:new Date(), configLoaded:bundle.configLoaded, sourceHealth:health,
-                planningCsv:by.planning, previousPlanningCsv:by.previousPlanning, goalsCsv:by.goals, capacityCsv:by.capacity, roadmapCsv:by.roadmap, psiUrlsCsv:by.psiUrls });
+            var degraded=Object.keys(health).some(function(k){ return !health[k].ok; });
+            var selected=bundle.meta.selected;
+            setState({
+                status:"ready", health:degraded?"degraded":"live", error:"", loadedAt:new Date(),
+                configLoaded:bundle.meta.configBundle.loaded, registryLoaded:bundle.meta.registryLoaded, sourceHealth:health,
+                planningCsv:by.planning, previousPlanningCsv:by.previousPlanning, goalsCsv:by.goals, capacityCsv:by.capacity, roadmapCsv:by.roadmap, psiUrlsCsv:by.psiUrls,
+                registry:bundle.meta.registry || [], selectedCycleKey:selected ? selected.cycleKey : SELECTED_CYCLE_KEY,
+                selectedCycleLabel:selected ? selected.cycleLabel : CYCLE.current,
+                selectedCycleState:selected ? selected.state : (SELECTED_CYCLE_STATE || DASHBOARD_RELEASE_STATE),
+                releasePointer:CONFIG_CURRENT_CYCLE
+            });
         }).catch(function(err){ setState(function(s){ return Object.assign({},s,{status:"error",health:"error",error:err.message||String(err)}); }); });
     }, []);
-    useEffect(function () { load(false); }, [load]);
-    var reload = useCallback(function () { load(true); }, [load]);
-    return { state: state, reload: reload };
+    useEffect(function () { load(false, ""); }, [load]);
+    var reload=useCallback(function(){ load(true, ""); },[load]);
+    var selectCycle=useCallback(function(cycleKey){
+        try {
+            var u=new URL(window.location.href);
+            if(cycleKey) u.searchParams.set("cycle",cycleKey); else u.searchParams.delete("cycle");
+            window.history.replaceState({},"",u.toString());
+        } catch(e) { }
+        load(true,cycleKey);
+    },[load]);
+    return { state:state, reload:reload, selectCycle:selectCycle };
 }
 
 function ViewGuide(props) {
@@ -1204,7 +1384,7 @@ function useStickyOffset() {
    QPE VIEW
    ════════════════════════════════════════════════════════════════════════════ */
 const QPE_STATUS_KEYS = ["Committed", "Proposed", "Backlogged", "Complete", "Eliminated", "Concept"];
-const QPE_QUARTERS_HIST = [CYCLE.baseline, CYCLE.previous, CYCLE.current];
+function qpeQuartersHist(){ return [CYCLE.baseline, CYCLE.previous, CYCLE.current]; }
 function qpeParseStatus(raw) {
     if (!raw)
         return null;
@@ -1238,7 +1418,7 @@ function qpeParseRank(v) {
     return isNaN(n) ? null : n;
 }
 function qpeQuarterParts(label) {
-    var m = String(label || "").match(/Q([1-4])\s*(?:'|’)?(\d{2}|\d{4})/i);
+    var m = String(label || "").match(/Q([1-4])\s*(?:'|’)?(\d{4}|\d{2})/i);
     if (!m)
         return null;
     var y = parseInt(m[2], 10);
@@ -1680,7 +1860,7 @@ function QpeDrillPanel(props) {
         React.createElement("div", { style: { flex: 1, overflowY: "auto", padding: "14px 20px" } },
             React.createElement("div", { style: { marginBottom: 14, padding: "10px 12px", background: "#fafbfc", border: "1px solid #ececec", borderRadius: 6 } },
                 React.createElement("div", { style: { fontSize: 9.5, textTransform: "uppercase", letterSpacing: .5, color: "#999", fontWeight: 600, marginBottom: 8 } }, "Status across quarters"),
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, QPE_QUARTERS_HIST.map(function (q, i) {
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, qpeQuartersHist().map(function (q, i) {
                     var h = init.history.find(function (x) { return x.quarter === q; });
                     var s = h ? h.status : null;
                     var rawLabel = h && h.raw ? qpeDisplayStatusRaw(h.raw) : "";
@@ -1701,7 +1881,7 @@ function QpeDrillPanel(props) {
                         React.createElement("div", { style: { textAlign: "center" } },
                             React.createElement("div", { style: { fontSize: 9, color: "#aaa", marginBottom: 3 } }, q),
                             displayLabel ? React.createElement(Chip, { bg: displayBg, tx: displayTx, size: 9.5 }, displayLabel) : React.createElement("span", { style: { fontSize: 9.5, color: "#ccc" } }, "\u2014")),
-                        i < QPE_QUARTERS_HIST.length - 1 && React.createElement("span", { style: { color: "#ddd", fontSize: 11 } }, "\u2192")));
+                        i < qpeQuartersHist().length - 1 && React.createElement("span", { style: { color: "#ddd", fontSize: 11 } }, "\u2192")));
                 }))),
             (init.currentRank != null || init.previousRank != null) && (React.createElement("div", { style: { marginBottom: 14, display: "flex", gap: 6, flexWrap: "wrap" } },
                 init.currentRank != null && (React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 10 },
@@ -2189,7 +2369,7 @@ function QpeView(props) {
         if (data.state.status !== "ready")
             return [];
         return qpeNormalizePlanning(data.state.planningCsv, data.state.previousPlanningCsv);
-    }, [data.state.status, data.state.planningCsv, data.state.previousPlanningCsv]);
+    }, [data.state.status, data.state.planningCsv, data.state.previousPlanningCsv, data.state.selectedCycleKey]);
     var goalsRef = useMemo(function () {
         if (data.state.status !== "ready")
             return {};
@@ -2349,17 +2529,16 @@ function QpeView(props) {
 /* ════════════════════════════════════════════════════════════════════════════
    CAPACITY VIEW
    ════════════════════════════════════════════════════════════════════════════ */
-/* Canonical team order per Dashboard Consistency Spec.
-   21 teams (12 NIH + 9 awardees) after Q3 2026 changes: Innovation retired;
-   DRC: RDR and DRC: Curation merged into DRC: RDR/Data.
-   Note: Product appears before Policy in the actual sheet (differs from spec
-   document); array order matches the sheet so drill-down attribution is correct. */
+/* Current Capacity teams. Physical CSV blocks are discovered by header rather than
+   assumed contiguous positions, so retained legacy blocks (for example DRC: Curation)
+   can remain in the workbook without corrupting team attribution. */
 const CAP_TEAMS = [
-    "Chief of Staff", "COO", "DCD", "DMSR", "DMSR (ODA)", "Engagement", "OFM", "TPC",
-    "Product", "Policy", "UX", "DTPD", "BioBank",
+    "Chief of Staff", "COO", "DCD", "DMSR", "DMSR (ODA)", "Engagement", "OFM", "Policy",
+    "Product", "TPC", "UX", "DTPD", "BioBank",
     "DRC: Analytics", "DRC: RDR/Data", "DRC: HealthPro", "DRC: Public", "DRC: Workbench",
     "PPSC: NORC", "PPSC: IBM", "PPSC: Support Center"
 ];
+const CAP_LEGACY_TEAMS = ["DRC: Curation", "Innovation", "DRC: RDR", "GCR", "NORC"];
 const CAP_TEAM_COL_START = 13;
 const CAP_LOE_LABEL = { "1": "XS", "2": "S", "3": "M", "5": "L", "8": "XL", "13": "XXL", "21": "XXXL" };
 const CAP_STAFF_CFG = {
@@ -2367,6 +2546,63 @@ const CAP_STAFF_CFG = {
     "P": { label: "Possibly", color: "#B7950B", bg: "#fefaec" },
     "N": { label: "No Capacity", color: "#C0392B", bg: "#fdf2f2" },
 };
+function capNormTeamName(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function capDiscoverTeamBlocks(rows, hi) {
+    var currentKnown = {};
+    CAP_TEAMS.forEach(function (name) { currentKnown[capNormTeamName(name)] = name; });
+    var legacyKnown = {};
+    CAP_LEGACY_TEAMS.forEach(function (name) { legacyKnown[capNormTeamName(name)] = name; });
+    var maxCol = 0;
+    for (var r = 0; r <= hi && r < rows.length; r++)
+        maxCol = Math.max(maxCol, (rows[r] || []).length);
+    var mapping = {};
+    var duplicates = [];
+    var legacyBlocks = [];
+    var blocks = [];
+    var scanStartRow = Math.max(0, hi - 4);
+    for (var base = CAP_TEAM_COL_START, pos = 1; base < maxCol; base += 5, pos++) {
+        var foundCurrent = "";
+        var foundLegacy = "";
+        var headerText = [];
+        for (var rr = scanStartRow; rr < hi; rr++) {
+            var row = rows[rr] || [];
+            for (var cc = base; cc < Math.min(base + 5, row.length); cc++) {
+                var raw = String(row[cc] || "").trim();
+                if (!raw)
+                    continue;
+                if (headerText.indexOf(raw) < 0)
+                    headerText.push(raw);
+                var norm = capNormTeamName(raw);
+                if (!foundCurrent && currentKnown[norm])
+                    foundCurrent = currentKnown[norm];
+                if (!foundLegacy && legacyKnown[norm])
+                    foundLegacy = legacyKnown[norm];
+            }
+        }
+        var kind = foundCurrent ? "current" : (foundLegacy ? "legacy" : "unknown");
+        var name = foundCurrent || foundLegacy || "";
+        blocks.push({ position: pos, base: base, kind: kind, name: name, headerText: headerText });
+        if (foundCurrent) {
+            if (mapping[foundCurrent] != null)
+                duplicates.push(foundCurrent);
+            else
+                mapping[foundCurrent] = base;
+        }
+        else if (foundLegacy) {
+            legacyBlocks.push({ name: foundLegacy, base: base, position: pos });
+        }
+    }
+    var missing = CAP_TEAMS.filter(function (name) { return mapping[name] == null; });
+    var mismatches = [];
+    if (missing.length)
+        mismatches.push("Missing current Capacity team block(s): " + missing.join(", "));
+    if (duplicates.length)
+        mismatches.push("Duplicate current Capacity team block(s): " + Array.from(new Set(duplicates)).join(", "));
+    return { map: mapping, blocks: blocks, legacyBlocks: legacyBlocks, missing: missing, duplicates: duplicates, mismatches: mismatches };
+}
+
 const CAP_CI_METHODOLOGY = "Confidence Index = weighted sum ÷ performers. Definitely +1.0, Possibly XS/S +0.8, Possibly M 0, Possibly L/XL −0.5, No Capacity −1.0. Thresholds: 8–10 on track, 6–7 monitor, ≤5 at risk.";
 function capCiTier(n) { if (n == null)
     return "none"; if (n >= 8)
@@ -2522,26 +2758,8 @@ function capParseCapacity(csvText) {
             break;
         }
     }
-    var mismatches = [];
-    function findCellAbove(col, maxScan) {
-        var limit = Math.max(0, hi - (maxScan || 3));
-        for (var r = hi - 1; r >= limit; r--) {
-            var cell = String((rows[r] || [])[col] || "").trim();
-            if (cell)
-                return cell;
-        }
-        return "";
-    }
-    CAP_TEAMS.forEach(function (expected, idx) {
-        var col = CAP_TEAM_COL_START + (idx * 5);
-        var found = findCellAbove(col, 3);
-        if (found && found.toLowerCase() !== expected.toLowerCase()) {
-            var norm = function (s) { return s.toLowerCase().replace(/[^a-z0-9]/g, ""); };
-            if (norm(found) !== norm(expected)) {
-                mismatches.push("Position " + (idx + 1) + " (col " + col + "): expected '" + expected + "', sheet shows '" + found + "'");
-            }
-        }
-    });
+    var teamLayout = capDiscoverTeamBlocks(rows, hi);
+    var mismatches = teamLayout.mismatches.slice();
     var get = makeRowAccessor(rows[hi]);
     var body = rows.slice(hi + 1);
     var map = {};
@@ -2555,9 +2773,9 @@ function capParseCapacity(csvText) {
         var cm = lbl.match(/(\d+)/);
         function int(k) { return parseInt(get(row, k)) || 0; }
         var performers = [];
-        CAP_TEAMS.forEach(function (name, i) {
-            var base = CAP_TEAM_COL_START + (i * 5);
-            if (base >= row.length)
+        CAP_TEAMS.forEach(function (name) {
+            var base = teamLayout.map[name];
+            if (base == null || base >= row.length)
                 return;
             var isPerformer = String(row[base] || "").trim() === "1";
             if (!isPerformer)
@@ -3012,12 +3230,12 @@ function CapacityView(props) {
         if (data.state.status !== "ready")
             return [];
         return capParseInitiatives(data.state.planningCsv, capacityIds);
-    }, [data.state.status, data.state.planningCsv, capacityIds]);
+    }, [data.state.status, data.state.planningCsv, capacityIds, data.state.selectedCycleKey]);
     var excludedCount = useMemo(function () {
         if (data.state.status !== "ready")
             return 0;
         return capCountExcludedInitiatives(data.state.planningCsv, capacityIds);
-    }, [data.state.status, data.state.planningCsv, capacityIds]);
+    }, [data.state.status, data.state.planningCsv, capacityIds, data.state.selectedCycleKey]);
     var goalsRef = useMemo(function () {
         if (data.state.status !== "ready")
             return {};
@@ -3441,27 +3659,49 @@ function rmParseDate(s) {
         return new Date(+dash[1], +dash[2] - 1, +dash[3]);
     return null;
 }
-const RM_TODAY = (function () {
+var RM_TODAY = (function () {
     try {
         var params = new URLSearchParams(window.location.search || "");
         var asOf = params.get("asOf");
         if (asOf) {
             var d = rmParseDate(asOf);
-            if (d)
-                return d;
+            if (d) return d;
         }
-    }
-    catch (e) { }
+    } catch (e) { }
     return new Date();
 })();
-const RM_DEFAULT_RANGE = (function () {
-    var now = new Date(RM_TODAY.getTime());
-    var startY = now.getFullYear(), startM = now.getMonth();
-    var currentQuarterEndM = Math.floor(startM / 3) * 3 + 2;
-    var endDate = new Date(startY, currentQuarterEndM + 9, 1);
+function setRoadmapAsOfDate(value) {
+    try {
+        var explicit=new URLSearchParams(window.location.search||"").get("asOf");
+        if(explicit){ var ed=rmParseDate(explicit); if(ed){ RM_TODAY=ed; return; } }
+    } catch(e) { }
+    var raw=String(value||"").trim();
+    var datePart=(raw.match(/\d{4}-\d{2}-\d{2}/)||[])[0];
+    var d=datePart ? rmParseDate(datePart) : null;
+    RM_TODAY=d || new Date();
+}
+function rmDefaultRange() {
+    /* LIVE current cycle follows the actual calendar date so the roadmap opens
+       at the present month even when the planning cycle starts next quarter.
+       ARCHIVED/PREP cycles anchor to the first month of the selected quarter. */
+    var state = String(SELECTED_CYCLE_STATE || DASHBOARD_RELEASE_STATE || "").toUpperCase();
+    var isLiveCurrent = state === "LIVE" && CYCLE.current === CONFIG_CURRENT_CYCLE;
+    var selected = cycleParts(CYCLE.current);
+    var startY, startM, endDate;
+    if (isLiveCurrent || !selected) {
+        var now = new Date(RM_TODAY.getTime());
+        startY = now.getFullYear();
+        startM = now.getMonth();
+        var currentQuarterEndM = Math.floor(startM / 3) * 3 + 2;
+        endDate = new Date(startY, currentQuarterEndM + 9, 1);
+    } else {
+        startY = selected.year;
+        startM = (selected.q - 1) * 3;
+        endDate = new Date(startY, startM + 11, 1);
+    }
     var fmt = function (y, m) { return y + "-" + String(m + 1).padStart(2, "0"); };
     return { start: fmt(startY, startM), end: fmt(endDate.getFullYear(), endDate.getMonth()) };
-})();
+}
 function rmNf() {
     for (var i = 0; i < arguments.length; i++) {
         var x = arguments[i];
@@ -4241,8 +4481,9 @@ function RoadmapDrillContent(props) {
 function RoadmapView(props) {
     var data = props.data;
     var [items, setItems] = useState([]);
-    var [startM, setStartM] = useState(RM_DEFAULT_RANGE.start);
-    var [endM, setEndM] = useState(RM_DEFAULT_RANGE.end);
+    var _initialRange = rmDefaultRange();
+    var [startM, setStartM] = useState(_initialRange.start);
+    var [endM, setEndM] = useState(_initialRange.end);
     var [groupBy, setGroupBy] = useState("goal");
     var [grouped, setGrouped] = useState(true);
     var [showAud, setShowAud] = useState(true);
@@ -4266,12 +4507,19 @@ function RoadmapView(props) {
     useEffect(function () {
         if (data.state.status !== "ready")
             return;
+        var r=rmDefaultRange();
+        setStartM(r.start);
+        setEndM(r.end);
+    }, [data.state.selectedCycleKey]);
+    useEffect(function () {
+        if (data.state.status !== "ready")
+            return;
         var rawRows = rmParseCsv(data.state.roadmapCsv);
         var normalized = rmNormalizeRows(rawRows);
         var planningLookup = rmParsePlanningLookup(data.state.planningCsv);
         var enriched = rmEnrichRows(normalized, planningLookup);
         setItems(enriched);
-    }, [data.state.status, data.state.roadmapCsv, data.state.planningCsv]);
+    }, [data.state.status, data.state.roadmapCsv, data.state.planningCsv, data.state.selectedCycleKey]);
     var capData = useMemo(function () {
         if (data.state.status !== "ready")
             return {};
@@ -4461,8 +4709,9 @@ function RoadmapView(props) {
     function gcText(k) { return GOALS[k] ? goalTextColor(k) : RM_TYPE_COLOR[k] || "#666"; }
     function gl(k) { return GOALS[k] ? "Goal " + GOALS[k].num + ": " + GOALS[k].short : k; }
     function reset() {
-        setStartM(RM_DEFAULT_RANGE.start);
-        setEndM(RM_DEFAULT_RANGE.end);
+        var rr=rmDefaultRange();
+        setStartM(rr.start);
+        setEndM(rr.end);
         setGroupBy("goal");
         setSortBy("goal");
         setGrouped(true);
@@ -4798,10 +5047,10 @@ function App() {
         if (data.state.status !== "ready")
             return null;
         return detectCycleDrift(data.state.planningCsv, CYCLE.current);
-    }, [data.state.status, data.state.planningCsv]);
+    }, [data.state.status, data.state.planningCsv, data.state.selectedCycleKey]);
     var schemaIssues = useMemo(function () {
-        return validateCsvSchemas(data.state);
-    }, [data.state.status, data.state.planningCsv, data.state.goalsCsv, data.state.capacityCsv, data.state.roadmapCsv, data.state.psiUrlsCsv]);
+        return validateCsvSchemas(data.state).concat(validateCycleRegistryRows(data.state.registry, data.state.releasePointer));
+    }, [data.state.status, data.state.planningCsv, data.state.goalsCsv, data.state.capacityCsv, data.state.roadmapCsv, data.state.psiUrlsCsv, data.state.registry, data.state.releasePointer, data.state.selectedCycleKey]);
     useEffect(function () { setDriftDismissed(false); }, [cycleDrift && cycleDrift.found]);
     useEffect(function () { setSchemaDismissed(false); }, [schemaIssues.length]);
     var selectInitiative = useCallback(function (targetView, initiativeId) {
@@ -4819,6 +5068,10 @@ function App() {
         currentView: activeView,
         psiUrlMap: psiUrlMap,
     };
+    var selectedCycleState=(data.state.selectedCycleState || DASHBOARD_RELEASE_STATE || "LIVE").toUpperCase();
+    var selectableCycles=(data.state.registry||[]).filter(function(r){ return IS_ADMIN || r.visibleToUsers; });
+    var isHistorical=selectedCycleState === "ARCHIVED";
+    var isPrep=selectedCycleState === "PREP";
     return (React.createElement("div", { className: "aou-app-shell", style: { display: "flex", flexDirection: "column", height: "100%" } },
         React.createElement("div", { className: "aou-sticky-shell" },
             React.createElement("div", { style: { padding: "10px 18px", background: "#fff", borderBottom: "1px solid #ececec", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 10 } },
@@ -4832,15 +5085,26 @@ function App() {
                         React.createElement("span", { style: { color: "#C0392B", fontWeight: 700 } }, "For Internal Use Only")),
                     React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#111", lineHeight: 1.2, letterSpacing: -0.2 } }, IS_SINGLE_VIEW ? (SINGLE_VIEW_MODE === "roadmap" ? "Program Roadmap" : SINGLE_VIEW_MODE === "capacity" ? "Capacity Planning" : "Quarterly Planning") : "Program Dashboards")),
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" } },
-                    data.state.status === "ready" && data.state.health === "live" && DASHBOARD_RELEASE_STATE === "LIVE" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#EAF7EF", color: "#1E8449", fontWeight: 600 } }, "\u25CF live \u00B7 ", data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
-                    data.state.status === "ready" && data.state.health === "live" && DASHBOARD_RELEASE_STATE !== "LIVE" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#FEF5E7", color: "#9A6800", fontWeight: 700 } }, "\u25CF " + DASHBOARD_RELEASE_STATE.toLowerCase() + " \u00B7 ", data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
+                    data.state.registryLoaded && selectableCycles.length > 0 && React.createElement("label", { style:{display:"inline-flex",alignItems:"center",gap:6,fontSize:10.5,color:"#6f7f8f",fontWeight:700,textTransform:"uppercase",letterSpacing:.4} },
+                        "Cycle",
+                        React.createElement("select", { "aria-label":"Select dashboard cycle", value:data.state.selectedCycleKey || SELECTED_CYCLE_KEY, onChange:function(e){ data.selectCycle(e.target.value); }, style:{fontSize:11.5,padding:"5px 28px 5px 9px",border:"1px solid #C8DCF0",borderRadius:6,background:"#fff",color:"#185FA5",fontWeight:700,cursor:"pointer",textTransform:"none",letterSpacing:0} },
+                            selectableCycles.slice().sort(function(a,b){return b.displayOrder-a.displayOrder;}).map(function(r){
+                                var suffix=r.cycleLabel===data.state.releasePointer ? " — Current" : r.state==="ARCHIVED" ? " — Historical" : r.state==="PREP" ? " — PREP" : "";
+                                return React.createElement("option", { key:r.cycleKey, value:r.cycleKey }, r.cycleLabel+suffix);
+                            }))),
+                    data.state.status === "ready" && data.state.health === "live" && selectedCycleState === "LIVE" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#EAF7EF", color: "#1E8449", fontWeight: 600 } }, "\u25CF live \u00B7 ", data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
+                    data.state.status === "ready" && data.state.health === "live" && isHistorical && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#F1F3F5", color: "#5F6B75", fontWeight: 700 } }, "◷ historical")),
+                    data.state.status === "ready" && data.state.health === "live" && !isHistorical && selectedCycleState !== "LIVE" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#FEF5E7", color: "#9A6800", fontWeight: 700 } }, "\u25CF " + selectedCycleState.toLowerCase() + " \u00B7 ", data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
                     data.state.status === "ready" && data.state.health === "degraded" && (React.createElement("span", { title: Object.keys(data.state.sourceHealth||{}).filter(function(k){return !data.state.sourceHealth[k].ok;}).join(", ") + " unavailable", style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#FEF5E7", color: "#9A6800", fontWeight: 600 } }, "⚠ degraded · " + data.state.loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))),
                     data.state.status === "loading" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#EBF5FB", color: "#2471A3", fontWeight: 600 } }, "\u21BB loading\u2026")),
                     data.state.status === "error" && (React.createElement("span", { style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "#FDECEA", color: "#C0392B", fontWeight: 600 }, title: data.state.error }, "\u25CF load failed")),
                     React.createElement("button", { onClick: data.reload, title: "Refresh all data", style: { fontSize: 11.5, padding: "6px 12px", border: "1px solid #C8DCF0", borderRadius: 6, background: "#EBF5FB", color: "#2471A3", cursor: "pointer", fontWeight: 500 } }, "\u21BB Refresh"))),
-            DASHBOARD_RELEASE_STATE !== "LIVE" && React.createElement("div", { role: "status", "aria-live": "polite", style: { padding: "10px 18px", background: "#FFF8E1", borderBottom: "1px solid #E8C766", color: "#6E5200", fontSize: 12.5, lineHeight: 1.45 } },
-                React.createElement("strong", { style: { fontWeight: 750 } }, CYCLE.current + " planning is " + (DASHBOARD_RELEASE_STATE === "IN PROGRESS" ? "in progress" : DASHBOARD_RELEASE_STATE.toLowerCase()) + ". "),
-                "Initiative statuses, rankings, capacity information, and roadmap details are being updated and should not yet be considered final."),
+            isHistorical && React.createElement("div", { role:"status", "aria-live":"polite", style:{padding:"8px 18px",background:"#F6F8FA",borderBottom:"1px solid #E2E6EA",color:"#566573",fontSize:11.5,lineHeight:1.45} },
+                React.createElement("strong", null, "Viewing "+CYCLE.current+" historical cycle. "),
+                "The current released cycle remains "+data.state.releasePointer+"."),
+            !isHistorical && selectedCycleState !== "LIVE" && React.createElement("div", { role: "status", "aria-live": "polite", style: { padding: "10px 18px", background: "#FFF8E1", borderBottom: "1px solid #E8C766", color: "#6E5200", fontSize: 12.5, lineHeight: 1.45 } },
+                React.createElement("strong", { style: { fontWeight: 750 } }, CYCLE.current + " planning is " + (selectedCycleState === "IN PROGRESS" ? "in progress" : selectedCycleState.toLowerCase()) + ". "),
+                isPrep ? "This cycle is in preparation and has not been released to normal users." : "Initiative statuses, rankings, capacity information, and roadmap details are being updated and should not yet be considered final."),
             IS_ADMIN && !driftDismissed && React.createElement(CycleDriftBanner, { drift: cycleDrift, onDismiss: function () { setDriftDismissed(true); } }),
             IS_ADMIN && !schemaDismissed && React.createElement(SchemaValidationBanner, { issues: schemaIssues, onDismiss: function () { setSchemaDismissed(true); } }),
             !IS_SINGLE_VIEW && (React.createElement("div", { className: "tab-bar" },
