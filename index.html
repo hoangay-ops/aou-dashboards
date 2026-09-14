@@ -135,16 +135,20 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
    Blank URL = backward-compatible Q3 2026 fallback values below. */
 const DASHBOARD_CONFIG_CSV_URL = (function(){
     try {
-        var params = new URLSearchParams(window.location.search || "");
-        var url = params.get("config") || "";
+        /* Google Sites embeds can preserve dashboard parameters either in the
+           iframe query string or its hash. Use the shared reader so config is
+           available consistently on Home, QPE, Roadmap, and Capacity embeds. */
+        var url = aouUrlParam("config") || "";
+        var single = aouUrlParam("single") || "";
+        var output = aouUrlParam("output") || "";
         /* Properly URL-encoding config= is still preferred. For convenience,
            repair the common unencoded Google published-CSV form, where the
            nested &single= and &output= parameters otherwise become outer params. */
         if (url && /^https:\/\/docs\.google\.com\/spreadsheets\//i.test(url)) {
-            if (params.has("single") && !/[?&]single=/i.test(url))
-                url += (url.indexOf("?") === -1 ? "?" : "&") + "single=" + encodeURIComponent(params.get("single") || "true");
-            if (params.has("output") && !/[?&]output=/i.test(url))
-                url += (url.indexOf("?") === -1 ? "?" : "&") + "output=" + encodeURIComponent(params.get("output") || "csv");
+            if (single && !/[?&]single=/i.test(url))
+                url += (url.indexOf("?") === -1 ? "?" : "&") + "single=" + encodeURIComponent(single || "true");
+            if (output && !/[?&]output=/i.test(url))
+                url += (url.indexOf("?") === -1 ? "?" : "&") + "output=" + encodeURIComponent(output || "csv");
         }
         return url;
     }
@@ -1159,13 +1163,11 @@ function useDataLoader() {
             });
         }
         function registryUrlFromQuery() {
-            try { return new URLSearchParams(window.location.search || "").get("registry") || ""; }
-            catch(e) { return ""; }
+            return aouUrlParam("registry") || "";
         }
         function requestedCycle() {
             if (cycleOverride) return cycleOverride;
-            try { return new URLSearchParams(window.location.search || "").get("cycle") || ""; }
-            catch(e) { return ""; }
+            return aouUrlParam("cycle") || "";
         }
         function loadRegistry(configBundle) {
             var registryUrl=registryUrlFromQuery() || CYCLE_REGISTRY_CSV_URL;
