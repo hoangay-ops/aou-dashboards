@@ -1018,7 +1018,8 @@ function IdentityBlock(props) {
         React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10, alignItems: "center" } },
             React.createElement(GoalChipFull, { g: init.goal }),
             React.createElement(StatusChip, { status: init.status, isNew: init.isNew }),
-            React.createElement(ProjectTypeChip, { projectType: init.projectType })),
+            React.createElement(ProjectTypeChip, { projectType: init.projectType }),
+            qpeIsRevived(init) && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 10 }, "REVIVED")),
         React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11.5, lineHeight: 1.45, marginBottom: 10 } },
             React.createElement("div", { style: { color: "#333" } },
                 React.createElement("strong", null, "Goal:"),
@@ -2125,6 +2126,7 @@ function QpeRankChip(props) {
 function QpeInitCard(props) {
     var i = props.init;
     var g = GOALS[i.goal];
+    var revived = props.revivedFlag === true || qpeIsRevived(i);
     return (React.createElement("div", { onClick: function () { props.onDrill(i.id); }, style: { padding: "10px 12px", borderRadius: 8, background: "#fff", border: "1px solid #ececec", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, minWidth: 0, transition: "transform .12s,box-shadow .12s" }, onMouseEnter: function (e) { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 3px 12px rgba(0,0,0,.07)"; }, onMouseLeave: function (e) { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; } },
         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0, flexWrap: "wrap" } },
             React.createElement(Chip, { bg: g.color + "33", tx: goalTextColor(i.goal), size: 9.5 },
@@ -2133,7 +2135,7 @@ function QpeInitCard(props) {
             React.createElement("span", { style: { fontFamily: "monospace", fontSize: 9.5, color: "#aaa" } }, i.id),
             qpePrimaryRank(i) != null && React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 9 }),
             i.isNew && React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 9 }, "NEW"),
-            props.revivedFlag && !i.isNew && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 9 }, "REVIVED")),
+            revived && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 9 }, "REVIVED")),
         React.createElement("div", { style: { fontSize: 12.5, fontWeight: 600, color: "#222", lineHeight: 1.35 } }, i.name),
         i.shortDesc && React.createElement("div", { style: { fontSize: 10.5, color: "#888", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } }, i.shortDesc),
         React.createElement("div", { style: { fontSize: 10, color: "#aaa", marginTop: "auto" } }, i.objOwner || "no owner")));
@@ -2145,6 +2147,11 @@ function qpeIsPreQpeDisposition(i, status) {
     if (status === "Backlogged") return Boolean(PRE_QPE_BACKLOGGED_IDS[i.id]);
     if (status === "Complete") return Boolean(PRE_QPE_COMPLETE_IDS[i.id]);
     return false;
+}
+function qpeIsRevived(i) {
+    if (!i || !Array.isArray(i.history)) return false;
+    var prior = i.history.find(function (h) { return h.quarter === CYCLE.previous; });
+    return Boolean(prior && prior.status === "Backlogged" && (i.status === "Proposed" || i.status === "Committed"));
 }
 function QpeMainView(props) {
     var initiatives = props.initiatives, onDrill = props.onDrill, onGoalDrill = props.onGoalDrill, goalFocus = props.goalFocus;
@@ -2162,7 +2169,8 @@ function QpeMainView(props) {
         var backlogged = summaryInitiatives.filter(function (i) { return i.status === "Backlogged" && !qpeIsPreQpeDisposition(i, "Backlogged"); });
         var complete = summaryInitiatives.filter(function (i) { return i.status === "Complete" && !qpeIsPreQpeDisposition(i, "Complete"); });
         var concept = summaryInitiatives.filter(function (i) { return i.status === "Concept"; });
-        return { committed: committed, proposed: proposed, backlogged: backlogged, complete: complete, concept: concept };
+        var newDesignated = summaryInitiatives.filter(function (i) { return i.isNew; });
+        return { committed: committed, proposed: proposed, backlogged: backlogged, complete: complete, concept: concept, newDesignated: newDesignated };
     }, [summaryInitiatives]);
     var cycleStory = useMemo(function () {
         var lastCommittedIds = {}, lastBackloggedIds = {};
@@ -2185,7 +2193,7 @@ function QpeMainView(props) {
             var hadPriorHistory = i.history.some(function (h) { return h.quarter !== CYCLE.current && h.status; });
             return !hadPriorHistory;
         });
-        var revived = summaryInitiatives.filter(function (i) { return lastBackloggedIds[i.id] && (i.status === "Proposed" || i.status === "Committed"); });
+        var revived = summaryInitiatives.filter(qpeIsRevived);
         var preQpeComplete = summaryInitiatives.filter(function(i){ return qpeIsPreQpeDisposition(i, "Complete"); });
         var preQpeBacklogged = summaryInitiatives.filter(function(i){ return qpeIsPreQpeDisposition(i, "Backlogged"); });
         var newCommitted = summaryInitiatives.filter(function(i){ return i.isNew && i.status === "Committed" && qpePrimaryRank(i) != null; });
@@ -2227,6 +2235,10 @@ function QpeMainView(props) {
                     React.createElement("div", { style: { fontSize: 9.5, color: "#9A6800", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Proposed"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#9A6800", lineHeight: 1.1, marginTop: 3 } }, activeSummary.proposed.length),
                     React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "not ranked")),
+                React.createElement("div", { onClick: function () { props.onListDrill({ label: "New Initiatives — " + CYCLE.current, items: activeSummary.newDesignated, sublabel: "Project Type = New", accent: "#B3541E" }); }, style: { padding: "12px 14px", background: "#FFF8F2", border: "1px solid #F0C9AF", borderRadius: 10, cursor: "pointer" } },
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#B3541E", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "+ New Initiatives"),
+                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#B3541E", lineHeight: 1.1, marginTop: 3 } }, activeSummary.newDesignated.length),
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#9A6A4A", marginTop: 2 } }, "Project Type = New")),
                 activeSummary.backlogged.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Backlogged — " + CYCLE.current, items: activeSummary.backlogged, sublabel: "deferred this cycle", accent: "#7D6608" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
                     React.createElement("div", { style: { fontSize: 9.5, color: "#7D6608", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Backlogged"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#7D6608", lineHeight: 1.1, marginTop: 3 } }, activeSummary.backlogged.length),
@@ -2306,6 +2318,7 @@ function QpeMainView(props) {
                     React.createElement("div", { style: { display: "flex", gap: 5, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" } },
                         sc && React.createElement(StatusChip, { status: i.status, isNew: i.isNew, size: 8.5 }),
                         i.isNew && React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 8.5 }, "NEW"),
+                        qpeIsRevived(i) && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 8.5 }, "REVIVED"),
                         isConceptItem && React.createElement(Chip, { bg: STATUS_CFG.Concept.bg, tx: STATUS_CFG.Concept.tx, size: 8.5 }, "Concept"))));
             })))) : (React.createElement("section", { style: { marginBottom: 24 } },
             React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#666", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
@@ -2338,6 +2351,7 @@ function QpeMainView(props) {
                                 React.createElement("span", { style: { fontFamily: "monospace", fontSize: 9.5, color: "#aaa", fontWeight: 400 } }, renderText(i.id))),
                             qpePrimaryRank(i) != null && React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 8.5 }),
                             i.isNew && React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 8.5 }, "NEW"),
+                            qpeIsRevived(i) && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 8.5 }, "REVIVED"),
                             isConceptItem && React.createElement(Chip, { bg: STATUS_CFG.Concept.bg, tx: STATUS_CFG.Concept.tx, size: 8.5 }, "Concept"),
                             i.status === "Backlogged" && React.createElement(Chip, { bg: STATUS_CFG.Backlogged.bg, tx: STATUS_CFG.Backlogged.tx, size: 8.5 }, "Backlogged"),
                             i.status === "Complete" && React.createElement(Chip, { bg: STATUS_CFG.Complete.bg, tx: STATUS_CFG.Complete.tx, size: 8.5 }, "Completed")));
@@ -5068,10 +5082,18 @@ function App() {
         currentView: activeView,
         psiUrlMap: psiUrlMap,
     };
-    var selectedCycleState=(data.state.selectedCycleState || DASHBOARD_RELEASE_STATE || "LIVE").toUpperCase();
+    var selectedCycleState=(data.state.selectedCycleState || "LIVE").toUpperCase();
+    var configuredReleaseState=String(DASHBOARD_RELEASE_STATE || "LIVE").trim().toUpperCase();
     var selectableCycles=(data.state.registry||[]).filter(function(r){ return IS_ADMIN || r.visibleToUsers; });
     var isHistorical=selectedCycleState === "ARCHIVED";
     var isPrep=selectedCycleState === "PREP";
+    var isCurrentReleaseCycle=CYCLE.current === data.state.releasePointer;
+    var showPlanningProgress=!isHistorical && isCurrentReleaseCycle && configuredReleaseState !== "LIVE" && configuredReleaseState !== "RELEASED";
+    var planningProgressLabel=(function(){
+        if (/IN\s+PROGRESS/i.test(configuredReleaseState)) return CYCLE.current + " Planning in Progress";
+        if (configuredReleaseState === "PREP") return CYCLE.current + " Planning in Preparation";
+        return CYCLE.current + " Planning — " + configuredReleaseState.replace(/^Q[1-4]\s*/i, "").toLowerCase();
+    })();
     return (React.createElement("div", { className: "aou-app-shell", style: { display: "flex", flexDirection: "column", height: "100%" } },
         React.createElement("div", { className: "aou-sticky-shell" },
             React.createElement("div", { style: { padding: "10px 18px", background: "#fff", borderBottom: "1px solid #ececec", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 10 } },
@@ -5102,7 +5124,12 @@ function App() {
             isHistorical && React.createElement("div", { role:"status", "aria-live":"polite", style:{padding:"8px 18px",background:"#F6F8FA",borderBottom:"1px solid #E2E6EA",color:"#566573",fontSize:11.5,lineHeight:1.45} },
                 React.createElement("strong", null, "Viewing "+CYCLE.current+" historical cycle. "),
                 "The current released cycle remains "+data.state.releasePointer+"."),
-            !isHistorical && selectedCycleState !== "LIVE" && React.createElement("div", { role: "status", "aria-live": "polite", style: { padding: "10px 18px", background: "#FFF8E1", borderBottom: "1px solid #E8C766", color: "#6E5200", fontSize: 12.5, lineHeight: 1.45 } },
+            showPlanningProgress && React.createElement("div", { role: "status", "aria-live": "polite", style: { padding: "10px 18px", background: "#FFF8E1", borderBottom: "1px solid #E8C766", color: "#6E5200", fontSize: 12.5, lineHeight: 1.45, display: "flex", alignItems: "center", gap: 8 } },
+                React.createElement("span", { style: { fontSize: 14, lineHeight: 1 } }, "●"),
+                React.createElement("div", null,
+                    React.createElement("strong", { style: { fontWeight: 750 } }, planningProgressLabel + ". "),
+                    "Initiative statuses, rankings, capacity information, and roadmap details are actively being updated and should not yet be considered final.")),
+            !isHistorical && !showPlanningProgress && selectedCycleState !== "LIVE" && React.createElement("div", { role: "status", "aria-live": "polite", style: { padding: "10px 18px", background: "#FFF8E1", borderBottom: "1px solid #E8C766", color: "#6E5200", fontSize: 12.5, lineHeight: 1.45 } },
                 React.createElement("strong", { style: { fontWeight: 750 } }, CYCLE.current + " planning is " + (selectedCycleState === "IN PROGRESS" ? "in progress" : selectedCycleState.toLowerCase()) + ". "),
                 isPrep ? "This cycle is in preparation and has not been released to normal users." : "Initiative statuses, rankings, capacity information, and roadmap details are being updated and should not yet be considered final."),
             IS_ADMIN && !driftDismissed && React.createElement(CycleDriftBanner, { drift: cycleDrift, onDismiss: function () { setDriftDismissed(true); } }),
