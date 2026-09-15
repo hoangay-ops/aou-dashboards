@@ -129,22 +129,29 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 })();
 </script>
 <script>
+/* Dashboard v3.0 — explicit Exploratory Concept / Committed Concept statuses.
+   Both concept statuses remain visible in portfolio views and excluded from Capacity. */
+
 /* SHARED CONSTANTS / QUARTERLY CONFIGURATION
    One-time setup: publish the Dashboard Config sheet as CSV and paste its URL below.
    After that, quarterly rollover values live in the sheet rather than this compiled file.
    Blank URL = backward-compatible Q3 2026 fallback values below. */
 const DASHBOARD_CONFIG_CSV_URL = (function(){
     try {
-        var params = new URLSearchParams(window.location.search || "");
-        var url = params.get("config") || "";
+        /* Google Sites embeds can preserve dashboard parameters either in the
+           iframe query string or its hash. Use the shared reader so config is
+           available consistently on Home, QPE, Roadmap, and Capacity embeds. */
+        var url = aouUrlParam("config") || "";
+        var single = aouUrlParam("single") || "";
+        var output = aouUrlParam("output") || "";
         /* Properly URL-encoding config= is still preferred. For convenience,
            repair the common unencoded Google published-CSV form, where the
            nested &single= and &output= parameters otherwise become outer params. */
         if (url && /^https:\/\/docs\.google\.com\/spreadsheets\//i.test(url)) {
-            if (params.has("single") && !/[?&]single=/i.test(url))
-                url += (url.indexOf("?") === -1 ? "?" : "&") + "single=" + encodeURIComponent(params.get("single") || "true");
-            if (params.has("output") && !/[?&]output=/i.test(url))
-                url += (url.indexOf("?") === -1 ? "?" : "&") + "output=" + encodeURIComponent(params.get("output") || "csv");
+            if (single && !/[?&]single=/i.test(url))
+                url += (url.indexOf("?") === -1 ? "?" : "&") + "single=" + encodeURIComponent(single || "true");
+            if (output && !/[?&]output=/i.test(url))
+                url += (url.indexOf("?") === -1 ? "?" : "&") + "output=" + encodeURIComponent(output || "csv");
         }
         return url;
     }
@@ -432,10 +439,15 @@ const STATUS_CFG = {
     Backlogged: { bg: "#EAECEE", tx: "#566573", dot: "#7F8C8D" },
     Complete: { bg: "#D5F5E3", tx: "#1E8449", dot: "#1E8449" },
     Eliminated: { bg: "#FADBD8", tx: "#943126", dot: "#C0392B" },
+    "Exploratory Concept": { bg: "#F4ECF7", tx: "#6C3483", dot: "#884EA0" },
+    "Committed Concept": { bg: "#E8EAF6", tx: "#3949AB", dot: "#5C6BC0" },
     Concept: { bg: "#F4ECF7", tx: "#6C3483", dot: "#6C3483" },
     "Not Funded": { bg: "#FDECEA", tx: "#943126", dot: "#C0392B" },
 };
 /* SHARED HELPERS */
+function isConceptStatus(status) {
+    return status === "Exploratory Concept" || status === "Committed Concept" || status === "Concept";
+}
 function renderText(value, fallback) {
     if (fallback === undefined)
         fallback = "";
@@ -916,12 +928,14 @@ function detectDQIssues(init) {
         out.push({ field: "description", issue: "Short description not provided" });
     if (!init.objOwner && !init.poc)
         out.push({ field: "owner", issue: "Owner / Objective Owner not assigned" });
-    var isConceptType = /concept/i.test(init.projectType || "") || init.status === "Concept";
-    if (isConceptType && (init.previousRank != null || init.currentRank != null)) {
-        out.push({ field: "rank", issue: "Concept-type initiatives should not be ranked" });
+    var isConceptType = /concept/i.test(init.projectType || "") || isConceptStatus(init.status);
+    /* Legacy Concept rows retain the historical rank warning. The two explicit
+       concept statuses are valid portfolio states and are not treated as DQ conflicts. */
+    if (init.status === "Concept" && (init.previousRank != null || init.currentRank != null)) {
+        out.push({ field: "rank", issue: "Legacy Concept status with rank requires review" });
     }
-    if (isConceptType && (init.status === "Committed")) {
-        out.push({ field: "projectType", issue: "Status 'Committed' conflicts with Project Type 'Concept'" });
+    if (/concept/i.test(init.projectType || "") && init.status === "Committed") {
+        out.push({ field: "projectType", issue: "Status 'Committed' conflicts with Project Type 'Concept'; use 'Committed Concept' or reclassify the Project Type" });
     }
     return out;
 }
@@ -1008,7 +1022,7 @@ function IdentityBlock(props) {
     var dqIssues = IS_ADMIN ? detectDQIssues(init) : [];
     var psiMapped = init.id && props.psiUrlMap && props.psiUrlMap[init.id];
     var psiUrl = buildPsiUrl(init, props.psiUrlMap);
-    var isConceptType = /concept/i.test(init.projectType || "") || init.status === "Concept";
+    var isConceptType = /concept/i.test(init.projectType || "") || isConceptStatus(init.status);
     var capacityExcluded = isConceptType ||
         init.status === "Complete" || init.status === "Backlogged" || init.status === "Eliminated";
     return (React.createElement("div", { style: { padding: "14px 18px", background: "#fafbfc", borderBottom: "1px solid #ececec" } },
@@ -1018,7 +1032,8 @@ function IdentityBlock(props) {
         React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10, alignItems: "center" } },
             React.createElement(GoalChipFull, { g: init.goal }),
             React.createElement(StatusChip, { status: init.status, isNew: init.isNew }),
-            React.createElement(ProjectTypeChip, { projectType: init.projectType })),
+            React.createElement(ProjectTypeChip, { projectType: init.projectType }),
+            qpeIsRevived(init) && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 10 }, "REVIVED")),
         React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11.5, lineHeight: 1.45, marginBottom: 10 } },
             React.createElement("div", { style: { color: "#333" } },
                 React.createElement("strong", null, "Goal:"),
@@ -1048,7 +1063,8 @@ function IdentityBlock(props) {
             "Initiative ",
             React.createElement("strong", null, init.id),
             " is excluded from Capacity Planning",
-            isConceptType ? " because its Project Type is Concept." :
+            isConceptStatus(init.status) ? " because its status is " + init.status + "." :
+                /concept/i.test(init.projectType || "") ? " because its Project Type is Concept." :
                 init.status === "Complete" ? " because it is Complete." :
                     init.status === "Backlogged" ? " because it is Backlogged." :
                         " because it has been Eliminated.")),
@@ -1158,13 +1174,11 @@ function useDataLoader() {
             });
         }
         function registryUrlFromQuery() {
-            try { return new URLSearchParams(window.location.search || "").get("registry") || ""; }
-            catch(e) { return ""; }
+            return aouUrlParam("registry") || "";
         }
         function requestedCycle() {
             if (cycleOverride) return cycleOverride;
-            try { return new URLSearchParams(window.location.search || "").get("cycle") || ""; }
-            catch(e) { return ""; }
+            return aouUrlParam("cycle") || "";
         }
         function loadRegistry(configBundle) {
             var registryUrl=registryUrlFromQuery() || CYCLE_REGISTRY_CSV_URL;
@@ -1383,7 +1397,7 @@ function useStickyOffset() {
 /* ════════════════════════════════════════════════════════════════════════════
    QPE VIEW
    ════════════════════════════════════════════════════════════════════════════ */
-const QPE_STATUS_KEYS = ["Committed", "Proposed", "Backlogged", "Complete", "Eliminated", "Concept"];
+const QPE_STATUS_KEYS = ["Committed", "Proposed", "Committed Concept", "Exploratory Concept", "Backlogged", "Complete", "Eliminated", "Concept"];
 function qpeQuartersHist(){ return [CYCLE.baseline, CYCLE.previous, CYCLE.current]; }
 function qpeParseStatus(raw) {
     if (!raw)
@@ -1391,10 +1405,12 @@ function qpeParseStatus(raw) {
     var s = String(raw).trim();
     if (/not\s*funded|unfunded/i.test(s))
         return null;
+    if (/exploratory\s*concept/i.test(s))
+        return "Exploratory Concept";
+    if (/committed\s*concept/i.test(s))
+        return "Committed Concept";
     if (/proposed/i.test(s))
         return "Proposed";
-    if (/committed/i.test(s) && /concept/i.test(s))
-        return "Concept";
     if (/committed/i.test(s))
         return "Committed";
     if (/backlog/i.test(s))
@@ -1406,6 +1422,14 @@ function qpeParseStatus(raw) {
     if (/concept/i.test(s))
         return "Concept";
     return null;
+}
+function qpeStatusWithRank(rawStatus, rank) {
+    var parsed = qpeParseStatus(rawStatus);
+    /* Explicit concept statuses remain concept statuses even when a rank is present.
+       This prevents future-funded concepts from being misclassified as active work. */
+    if (isConceptStatus(parsed))
+        return rawStatus || parsed;
+    return rank != null ? "Committed" : rawStatus;
 }
 function qpeParseRank(v) {
     var s = String(v == null ? "" : v).trim().toLowerCase();
@@ -1681,11 +1705,10 @@ function qpeNormalizePlanning(csvText, previousCsvText) {
         if (!prevRaw && priorBaseline)
             prevRaw = priorBaseline.raw || "";
         var pt = get(row, "Project Type", "Type");
-        /* RANKED = COMMITTED. Per program rule: any initiative with a current-cycle
-           CEO rank is Committed for that cycle regardless of the literal Status
-           column text. Apply the same logic to prior-cycle history for consistency. */
-        var q3s = q3r != null ? "Committed" : q3sRaw;
-        var q2s = q2r != null ? "Committed" : q2sRaw;
+        /* Ranked non-concept initiatives are Committed. Explicit concept statuses
+           remain distinct so they stay visible but out of current-quarter Capacity. */
+        var q3s = qpeStatusWithRank(q3sRaw, q3r);
+        var q2s = qpeStatusWithRank(q2sRaw, q2r);
         var prev = prevRaw;
         var history = [];
         if (prev)
@@ -2125,6 +2148,7 @@ function QpeRankChip(props) {
 function QpeInitCard(props) {
     var i = props.init;
     var g = GOALS[i.goal];
+    var revived = props.revivedFlag === true || qpeIsRevived(i);
     return (React.createElement("div", { onClick: function () { props.onDrill(i.id); }, style: { padding: "10px 12px", borderRadius: 8, background: "#fff", border: "1px solid #ececec", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, minWidth: 0, transition: "transform .12s,box-shadow .12s" }, onMouseEnter: function (e) { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 3px 12px rgba(0,0,0,.07)"; }, onMouseLeave: function (e) { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; } },
         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0, flexWrap: "wrap" } },
             React.createElement(Chip, { bg: g.color + "33", tx: goalTextColor(i.goal), size: 9.5 },
@@ -2133,7 +2157,7 @@ function QpeInitCard(props) {
             React.createElement("span", { style: { fontFamily: "monospace", fontSize: 9.5, color: "#aaa" } }, i.id),
             qpePrimaryRank(i) != null && React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 9 }),
             i.isNew && React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 9 }, "NEW"),
-            props.revivedFlag && !i.isNew && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 9 }, "REVIVED")),
+            revived && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 9 }, "REVIVED")),
         React.createElement("div", { style: { fontSize: 12.5, fontWeight: 600, color: "#222", lineHeight: 1.35 } }, i.name),
         i.shortDesc && React.createElement("div", { style: { fontSize: 10.5, color: "#888", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } }, i.shortDesc),
         React.createElement("div", { style: { fontSize: 10, color: "#aaa", marginTop: "auto" } }, i.objOwner || "no owner")));
@@ -2145,6 +2169,11 @@ function qpeIsPreQpeDisposition(i, status) {
     if (status === "Backlogged") return Boolean(PRE_QPE_BACKLOGGED_IDS[i.id]);
     if (status === "Complete") return Boolean(PRE_QPE_COMPLETE_IDS[i.id]);
     return false;
+}
+function qpeIsRevived(i) {
+    if (!i || !Array.isArray(i.history)) return false;
+    var prior = i.history.find(function (h) { return h.quarter === CYCLE.previous; });
+    return Boolean(prior && prior.status === "Backlogged" && (i.status === "Proposed" || i.status === "Committed"));
 }
 function QpeMainView(props) {
     var initiatives = props.initiatives, onDrill = props.onDrill, onGoalDrill = props.onGoalDrill, goalFocus = props.goalFocus;
@@ -2161,8 +2190,11 @@ function QpeMainView(props) {
         var proposed = summaryInitiatives.filter(function (i) { return i.status === "Proposed"; });
         var backlogged = summaryInitiatives.filter(function (i) { return i.status === "Backlogged" && !qpeIsPreQpeDisposition(i, "Backlogged"); });
         var complete = summaryInitiatives.filter(function (i) { return i.status === "Complete" && !qpeIsPreQpeDisposition(i, "Complete"); });
-        var concept = summaryInitiatives.filter(function (i) { return i.status === "Concept"; });
-        return { committed: committed, proposed: proposed, backlogged: backlogged, complete: complete, concept: concept };
+        var exploratoryConcept = summaryInitiatives.filter(function (i) { return i.status === "Exploratory Concept"; });
+        var committedConcept = summaryInitiatives.filter(function (i) { return i.status === "Committed Concept"; });
+        var legacyConcept = summaryInitiatives.filter(function (i) { return i.status === "Concept"; });
+        var newDesignated = summaryInitiatives.filter(function (i) { return i.isNew; });
+        return { committed: committed, proposed: proposed, backlogged: backlogged, complete: complete, exploratoryConcept: exploratoryConcept, committedConcept: committedConcept, legacyConcept: legacyConcept, newDesignated: newDesignated };
     }, [summaryInitiatives]);
     var cycleStory = useMemo(function () {
         var lastCommittedIds = {}, lastBackloggedIds = {};
@@ -2185,7 +2217,7 @@ function QpeMainView(props) {
             var hadPriorHistory = i.history.some(function (h) { return h.quarter !== CYCLE.current && h.status; });
             return !hadPriorHistory;
         });
-        var revived = summaryInitiatives.filter(function (i) { return lastBackloggedIds[i.id] && (i.status === "Proposed" || i.status === "Committed"); });
+        var revived = summaryInitiatives.filter(qpeIsRevived);
         var preQpeComplete = summaryInitiatives.filter(function(i){ return qpeIsPreQpeDisposition(i, "Complete"); });
         var preQpeBacklogged = summaryInitiatives.filter(function(i){ return qpeIsPreQpeDisposition(i, "Backlogged"); });
         var newCommitted = summaryInitiatives.filter(function(i){ return i.isNew && i.status === "Committed" && qpePrimaryRank(i) != null; });
@@ -2213,7 +2245,7 @@ function QpeMainView(props) {
         React.createElement("section", { style: { marginBottom: 20 } },
             React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#666", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
                 React.createElement("span", null,
-                    "Ratified & Active \u2014 ",
+                    "Portfolio Status \u2014 ",
                     CYCLE.current,
                     " - ",
                     CYCLE.activeThrough),
@@ -2227,6 +2259,10 @@ function QpeMainView(props) {
                     React.createElement("div", { style: { fontSize: 9.5, color: "#9A6800", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Proposed"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#9A6800", lineHeight: 1.1, marginTop: 3 } }, activeSummary.proposed.length),
                     React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "not ranked")),
+                React.createElement("div", { onClick: function () { props.onListDrill({ label: "New Initiatives — " + CYCLE.current, items: activeSummary.newDesignated, sublabel: "Project Type = New", accent: "#B3541E" }); }, style: { padding: "12px 14px", background: "#FFF8F2", border: "1px solid #F0C9AF", borderRadius: 10, cursor: "pointer" } },
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#B3541E", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "+ New Initiatives"),
+                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#B3541E", lineHeight: 1.1, marginTop: 3 } }, activeSummary.newDesignated.length),
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#9A6A4A", marginTop: 2 } }, "Project Type = New")),
                 activeSummary.backlogged.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Backlogged — " + CYCLE.current, items: activeSummary.backlogged, sublabel: "deferred this cycle", accent: "#7D6608" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
                     React.createElement("div", { style: { fontSize: 9.5, color: "#7D6608", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Backlogged"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#7D6608", lineHeight: 1.1, marginTop: 3 } }, activeSummary.backlogged.length),
@@ -2235,10 +2271,18 @@ function QpeMainView(props) {
                     React.createElement("div", { style: { fontSize: 9.5, color: "#1E8449", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Complete"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#1E8449", lineHeight: 1.1, marginTop: 3 } }, activeSummary.complete.length),
                     React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "closed"))),
-                activeSummary.concept.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Concept — " + CYCLE.current, items: activeSummary.concept, sublabel: "exploratory, excluded from capacity", accent: "#6C3483" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#6C3483", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Concept"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#6C3483", lineHeight: 1.1, marginTop: 3 } }, activeSummary.concept.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "exploratory"))))),
+                activeSummary.exploratoryConcept.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Exploratory Concept — " + CYCLE.current, items: activeSummary.exploratoryConcept, sublabel: "visibility only; no current work or capacity collection", accent: "#6C3483" }); }, style: { padding: "12px 14px", background: "#FBF7FF", border: "1px solid #D7BDE2", borderRadius: 10, cursor: "pointer" } },
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#6C3483", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Exploratory Concept"),
+                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#6C3483", lineHeight: 1.1, marginTop: 3 } }, activeSummary.exploratoryConcept.length),
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#7D6B86", marginTop: 2 } }, "visibility only · no capacity"))),
+                activeSummary.committedConcept.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Committed Concept — " + CYCLE.current, items: activeSummary.committedConcept, sublabel: "fully funded for future start; no current-quarter capacity collection", accent: "#3949AB" }); }, style: { padding: "12px 14px", background: "#F4F5FC", border: "1px solid #C5CAE9", borderRadius: 10, cursor: "pointer" } },
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#3949AB", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Committed Concept"),
+                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#3949AB", lineHeight: 1.1, marginTop: 3 } }, activeSummary.committedConcept.length),
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#6F76A8", marginTop: 2 } }, "funded · future start · no capacity"))),
+                activeSummary.legacyConcept.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Legacy Concept — " + CYCLE.current, items: activeSummary.legacyConcept, sublabel: "legacy Concept status; excluded from capacity", accent: "#6C3483" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#6C3483", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Legacy Concept"),
+                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#6C3483", lineHeight: 1.1, marginTop: 3 } }, activeSummary.legacyConcept.length),
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "historical status"))))),
         React.createElement("details", { style: { marginBottom: 24, background: "#fff", border: "1px solid #ececec", borderRadius: 10, overflow: "hidden" } },
             React.createElement("summary", { style: { cursor: "pointer", padding: "10px 14px", background: "#fafbfc", fontSize: 11, textTransform: "uppercase", letterSpacing: .65, color: "#607080", fontWeight: 800, display: "flex", alignItems: "center", gap: 8, listStyle: "none" } },
                 React.createElement("span", null, "Past QPE activity"),
@@ -2291,7 +2335,7 @@ function QpeMainView(props) {
             React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, rankListItems.length === 0 ? (React.createElement("div", { style: { fontSize: 12, color: "#bbb", fontStyle: "italic", padding: "10px 0" } }, "No ranked initiatives match the current filters.")) : rankListItems.map(function (i) {
                 var g = GOALS[i.goal];
                 var sc = STATUS_CFG[i.status];
-                var isConceptItem = i.status === "Concept" || /concept/i.test(i.projectType || "");
+                var isConceptItem = isConceptStatus(i.status) || /concept/i.test(i.projectType || "");
                 return (React.createElement("div", { key: i.id, onClick: function () { onDrill(i.id); }, style: { padding: "8px 10px", borderRadius: 7, background: "#fff", border: "1px solid #ececec", cursor: "pointer", display: "grid", gridTemplateColumns: "86px 54px 1fr auto", gap: 8, alignItems: "center", minWidth: 0 }, onMouseEnter: function (e) { e.currentTarget.style.background = "#f7fafd"; }, onMouseLeave: function (e) { e.currentTarget.style.background = "#fff"; } },
                     React.createElement("div", { style: { display: "flex", justifyContent: "flex-start" } },
                         React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 9 })),
@@ -2306,6 +2350,7 @@ function QpeMainView(props) {
                     React.createElement("div", { style: { display: "flex", gap: 5, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" } },
                         sc && React.createElement(StatusChip, { status: i.status, isNew: i.isNew, size: 8.5 }),
                         i.isNew && React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 8.5 }, "NEW"),
+                        qpeIsRevived(i) && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 8.5 }, "REVIVED"),
                         isConceptItem && React.createElement(Chip, { bg: STATUS_CFG.Concept.bg, tx: STATUS_CFG.Concept.tx, size: 8.5 }, "Concept"))));
             })))) : (React.createElement("section", { style: { marginBottom: 24 } },
             React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#666", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
@@ -2330,7 +2375,7 @@ function QpeMainView(props) {
                                 renderText(goalOwner)))),
                         React.createElement("span", { style: { fontSize: 10.5, color: "#999", flexShrink: 0 } }, lane.length)),
                     lane.length === 0 ? React.createElement("div", { style: { fontSize: 11, color: "#bbb", fontStyle: "italic", padding: "6px 0" } }, "None in this quarter.") : (React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 3 } }, lane.map(function (i) {
-                        var isConceptItem = i.status === "Concept" || /concept/i.test(i.projectType || "");
+                        var isConceptItem = isConceptStatus(i.status) || /concept/i.test(i.projectType || "");
                         return (React.createElement("div", { key: i.id, onClick: function () { onDrill(i.id); }, style: { padding: "6px 8px", margin: "0 -8px", borderRadius: 5, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, minWidth: 0, transition: "background .12s" }, onMouseEnter: function (e) { e.currentTarget.style.background = "#f7fafd"; }, onMouseLeave: function (e) { e.currentTarget.style.background = "transparent"; } },
                             React.createElement("span", { style: { fontSize: 12, color: "#333", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, title: renderText(i.name) },
                                 renderText(i.name),
@@ -2338,6 +2383,7 @@ function QpeMainView(props) {
                                 React.createElement("span", { style: { fontFamily: "monospace", fontSize: 9.5, color: "#aaa", fontWeight: 400 } }, renderText(i.id))),
                             qpePrimaryRank(i) != null && React.createElement(QpeRankChip, { rank: qpePrimaryRank(i), size: 8.5 }),
                             i.isNew && React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800", size: 8.5 }, "NEW"),
+                            qpeIsRevived(i) && React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483", size: 8.5 }, "REVIVED"),
                             isConceptItem && React.createElement(Chip, { bg: STATUS_CFG.Concept.bg, tx: STATUS_CFG.Concept.tx, size: 8.5 }, "Concept"),
                             i.status === "Backlogged" && React.createElement(Chip, { bg: STATUS_CFG.Backlogged.bg, tx: STATUS_CFG.Backlogged.tx, size: 8.5 }, "Backlogged"),
                             i.status === "Complete" && React.createElement(Chip, { bg: STATUS_CFG.Complete.bg, tx: STATUS_CFG.Complete.tx, size: 8.5 }, "Completed")));
@@ -2636,8 +2682,10 @@ function capParseStatus(r) {
     if (!r)
         return null;
     var s = String(r);
-    if (/concept/i.test(s) && /committed/i.test(s))
-        return "Concept";
+    if (/exploratory\s*concept/i.test(s))
+        return "Exploratory Concept";
+    if (/committed\s*concept/i.test(s))
+        return "Committed Concept";
     if (/not\s*funded|unfunded/i.test(s))
         return "Not Funded";
     if (/proposed/i.test(s))
@@ -2685,11 +2733,11 @@ function capParseInitiatives(csvText, capacityIds) {
         var q3sRaw = qpeValueForQuarterStatus(hdr, row, CYCLE.current, get, qpeHistoryAliasesForQuarter(CYCLE.current));
         var q2sRaw = qpeValueForQuarterStatus(hdr, row, CYCLE.previous, get, qpeHistoryAliasesForQuarter(CYCLE.previous));
         var q3r = qpeParseRank(qpeValueForQuarterRank(hdr, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current)));
-        var q3s = q3r != null ? "Committed" : q3sRaw;
+        var q3s = qpeStatusWithRank(q3sRaw, q3r);
         var q2s = q2sRaw;
         var status = capParseStatus(q3s) || capParseStatus(q2s);
         var projType = get(row, "Project Type", "Type");
-        var isConcept = /concept/i.test(projType) || status === "Concept";
+        var isConcept = /concept/i.test(projType) || isConceptStatus(status);
         if (status === "Complete" || status === "Eliminated" || status === "Backlogged")
             return acc;
         if (isConcept)
@@ -2733,11 +2781,11 @@ function capCountExcludedInitiatives(csvText, capacityIds) {
         var q3sRaw = qpeValueForQuarterStatus(hdr, row, CYCLE.current, get, qpeHistoryAliasesForQuarter(CYCLE.current));
         var q2sRaw = qpeValueForQuarterStatus(hdr, row, CYCLE.previous, get, qpeHistoryAliasesForQuarter(CYCLE.previous));
         var q3r = qpeParseRank(qpeValueForQuarterRank(hdr, row, CYCLE.current, get, qpeRankAliasesForQuarter(CYCLE.current)));
-        var q3s = q3r != null ? "Committed" : q3sRaw;
+        var q3s = qpeStatusWithRank(q3sRaw, q3r);
         var q2s = q2sRaw;
         var status = capParseStatus(q3s) || capParseStatus(q2s);
         var projType = get(row, "Project Type", "Type");
-        var isConcept = /concept/i.test(projType) || status === "Concept";
+        var isConcept = /concept/i.test(projType) || isConceptStatus(status);
         if (status === "Complete" || status === "Eliminated" || status === "Backlogged")
             count++;
         else if (isConcept)
@@ -3558,7 +3606,7 @@ function CapacityView(props) {
                         React.createElement("span", { style: { color: "#C0392B", fontWeight: 800 } }, "\u2717"),
                         " No Capacity. The mini-bar in each row shows the staffing breakdown; size chips show XS/S/M/L/XL effort.") },
                 { icon: "🚫", title: "What's excluded", color: "#6C3483", bg: "#FBF7FF",
-                    body: React.createElement(React.Fragment, null, "This view excludes Concept-type initiatives and any with status Complete, Backlogged, or Eliminated. The hint under the metric tiles explains the math: showing X of total Y. Use cross-view nav to find excluded initiatives in QPE or Roadmap.") },
+                    body: React.createElement(React.Fragment, null, "This view excludes Exploratory Concept, Committed Concept, legacy Concept-type initiatives, and any with status Complete, Backlogged, or Eliminated. Concepts remain visible in Quarterly Planning but do not collect capacity until they transition to Proposed and the Project Type is no longer Concept. The hint under the metric tiles explains the math: showing X of total Y.") },
                 { icon: "👥", title: "Performer filter", color: "#2471A3", bg: "#F4FAFF",
                     body: React.createElement(React.Fragment, null,
                         "Select one or more performers to show horizontal Team Summary cards at the top of the workspace. Use ",
@@ -3641,6 +3689,9 @@ const RM_INIT_STATUS_CFG = {
     Complete: { label: "Complete", icon: "✓", bg: "#D5F5E3", tx: "#1E8449", border: "#ABEBC6" },
     Backlogged: { label: "Backlogged", icon: "⏸", bg: "#EAECEE", tx: "#566573", border: "#D5DBDB" },
     Proposed: { label: "Proposed", icon: "◆", bg: "#FEF5E7", tx: "#9A6800", border: "#F4D03F" },
+    "Exploratory Concept": { label: "Exploratory Concept", icon: "◇", bg: "#F4ECF7", tx: "#6C3483", border: "#D7BDE2" },
+    "Committed Concept": { label: "Committed Concept", icon: "◆", bg: "#E8EAF6", tx: "#3949AB", border: "#C5CAE9" },
+    Concept: { label: "Concept", icon: "◇", bg: "#F4ECF7", tx: "#6C3483", border: "#D7BDE2" },
     "Not Funded": { label: "Not Funded", icon: "⊘", bg: "#FDECEA", tx: "#943126", border: "#E6B0AA" },
 };
 function rmParseDate(s) {
@@ -3756,6 +3807,8 @@ function rmInitStatusDisplay(item) {
         return RM_INIT_STATUS_CFG["Not Funded"];
     if (s === "Proposed")
         return RM_INIT_STATUS_CFG.Proposed;
+    if (isConceptStatus(s))
+        return RM_INIT_STATUS_CFG[s] || RM_INIT_STATUS_CFG.Concept;
     return null;
 }
 function rmRankValue(item) {
@@ -3769,10 +3822,13 @@ function rmRankLabel(item) {
     return r == null ? "" : "#" + String(r).padStart(2, "0");
 }
 function rmIsConcept(item) {
-    return Boolean(item && (item.isConcept || item.planningStatus === "Concept" || /concept/i.test(item.projectType || "")));
+    return Boolean(item && (item.isConcept || isConceptStatus(item.planningStatus) || /concept/i.test(item.projectType || "")));
 }
-function RmConceptBadge() {
-    return React.createElement("span", { title: "Concept", style: { fontSize: 8.5, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: STATUS_CFG.Concept.bg, color: STATUS_CFG.Concept.tx, border: "1px solid #D7BDE2", verticalAlign: "middle", flexShrink: 0, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1, textTransform: "uppercase", letterSpacing: .25 } }, "Concept");
+function RmConceptBadge(props) {
+    var item = props && props.item;
+    var status = item && isConceptStatus(item.planningStatus) ? item.planningStatus : "Concept";
+    var cfg = STATUS_CFG[status] || STATUS_CFG.Concept;
+    return React.createElement("span", { title: status, style: { fontSize: 8.5, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: cfg.bg, color: cfg.tx, border: "1px solid #D7BDE2", verticalAlign: "middle", flexShrink: 0, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1, textTransform: "uppercase", letterSpacing: .25 } }, status);
 }
 function rmExtractParentId(p) {
     if (!p)
@@ -4019,6 +4075,10 @@ function rmNormalizeRows(rows) {
                 planningStatus = "Active";
             else if (/^proposed$/i.test(rawStatus))
                 planningStatus = "Proposed";
+            else if (/^exploratory\s*concept$/i.test(rawStatus))
+                planningStatus = "Exploratory Concept";
+            else if (/^committed\s*concept$/i.test(rawStatus))
+                planningStatus = "Committed Concept";
             else if (/^concept/i.test(rawStatus))
                 planningStatus = "Concept";
             else if (/^complete/i.test(rawStatus) || /^completed/i.test(rawStatus))
@@ -4043,7 +4103,7 @@ function rmNormalizeRows(rows) {
                 impactIfLate: rmNf(r["impact if late"]),
                 mitigationNotes: rmNf(r["mitigation / notes"], r["mitigation notes"]),
                 notes: cleanNotes.length ? cleanNotes.join("\n") : null,
-                isConcept: planningStatus === "Concept",
+                isConcept: isConceptStatus(planningStatus),
                 description: rmNf(r["short description (for publishing)"], r["short description"], r["summary"], r["description"]) || null,
                 goalOwner: rmNf(r["goal owner"], r["goal owner name"]),
                 obj: rmNf(r["26 obj"], r["objective"], r["obj"], r["objective #"], r["obj #"]),
@@ -4874,7 +4934,7 @@ function RoadmapView(props) {
             React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } },
                 React.createElement("span", { style: { fontSize: 9, textTransform: "uppercase", color: "#bbb", fontWeight: 700, letterSpacing: .5 } }, "Badges"),
                 React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 5 } },
-                    React.createElement(RmConceptBadge, null)),
+                    React.createElement(RmConceptBadge, { item: item })),
                 RM_TYPE_KEYS.map(function (t) {
                     return (React.createElement("span", { key: t, style: { display: "flex", alignItems: "center", gap: 5 } },
                         React.createElement("span", { style: { fontSize: 8, fontWeight: 700, width: 14, height: 14, borderRadius: 3, display: "inline-flex", alignItems: "center", justifyContent: "center", background: RM_TYPE_BG[t], color: RM_TYPE_COLOR[t] } }, RM_TYPE_SHORT[t]),
@@ -4924,7 +4984,7 @@ function RoadmapView(props) {
                                         e.currentTarget.style.background = "transparent"; } },
                                     React.createElement("div", { style: { width: 58, flexShrink: 0, alignSelf: "stretch", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 3, paddingRight: 6, marginRight: 6, borderRight: "1px solid #f0f2f4" } },
                                         React.createElement("span", { style: { fontSize: 10, color: "#8a96a3", fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 600, whiteSpace: "nowrap" } }, item.id),
-                                        showAud && rmIsConcept(item) ? React.createElement(RmConceptBadge, null) : React.createElement("span", { style: { height: 15 } })),
+                                        showAud && rmIsConcept(item) ? React.createElement(RmConceptBadge, { item: item }) : React.createElement("span", { style: { height: 15 } })),
                                     React.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 } },
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 } },
                                             showAud && rmRankValue(item) != null && (React.createElement("span", { title: CYCLE.current + " rank " + rmRankLabel(item), style: { fontSize: 8.5, fontWeight: 800, padding: "2px 6px", borderRadius: 3, background: "#FEF5E7", color: "#9A6800", border: "1px solid #F4D03F", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1, letterSpacing: .2, flexShrink: 0 } }, rmRankLabel(item))),
@@ -5068,10 +5128,18 @@ function App() {
         currentView: activeView,
         psiUrlMap: psiUrlMap,
     };
-    var selectedCycleState=(data.state.selectedCycleState || DASHBOARD_RELEASE_STATE || "LIVE").toUpperCase();
+    var selectedCycleState=(data.state.selectedCycleState || "LIVE").toUpperCase();
+    var configuredReleaseState=String(DASHBOARD_RELEASE_STATE || "LIVE").trim().toUpperCase();
     var selectableCycles=(data.state.registry||[]).filter(function(r){ return IS_ADMIN || r.visibleToUsers; });
     var isHistorical=selectedCycleState === "ARCHIVED";
     var isPrep=selectedCycleState === "PREP";
+    var isCurrentReleaseCycle=CYCLE.current === data.state.releasePointer;
+    var showPlanningProgress=!isHistorical && isCurrentReleaseCycle && configuredReleaseState !== "LIVE" && configuredReleaseState !== "RELEASED";
+    var planningProgressLabel=(function(){
+        if (/IN\s+PROGRESS/i.test(configuredReleaseState)) return CYCLE.current + " Planning in Progress";
+        if (configuredReleaseState === "PREP") return CYCLE.current + " Planning in Preparation";
+        return CYCLE.current + " Planning — " + configuredReleaseState.replace(/^Q[1-4]\s*/i, "").toLowerCase();
+    })();
     return (React.createElement("div", { className: "aou-app-shell", style: { display: "flex", flexDirection: "column", height: "100%" } },
         React.createElement("div", { className: "aou-sticky-shell" },
             React.createElement("div", { style: { padding: "10px 18px", background: "#fff", borderBottom: "1px solid #ececec", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 10 } },
@@ -5102,7 +5170,12 @@ function App() {
             isHistorical && React.createElement("div", { role:"status", "aria-live":"polite", style:{padding:"8px 18px",background:"#F6F8FA",borderBottom:"1px solid #E2E6EA",color:"#566573",fontSize:11.5,lineHeight:1.45} },
                 React.createElement("strong", null, "Viewing "+CYCLE.current+" historical cycle. "),
                 "The current released cycle remains "+data.state.releasePointer+"."),
-            !isHistorical && selectedCycleState !== "LIVE" && React.createElement("div", { role: "status", "aria-live": "polite", style: { padding: "10px 18px", background: "#FFF8E1", borderBottom: "1px solid #E8C766", color: "#6E5200", fontSize: 12.5, lineHeight: 1.45 } },
+            showPlanningProgress && React.createElement("div", { role: "status", "aria-live": "polite", style: { padding: "10px 18px", background: "#FFF8E1", borderBottom: "1px solid #E8C766", color: "#6E5200", fontSize: 12.5, lineHeight: 1.45, display: "flex", alignItems: "center", gap: 8 } },
+                React.createElement("span", { style: { fontSize: 14, lineHeight: 1 } }, "●"),
+                React.createElement("div", null,
+                    React.createElement("strong", { style: { fontWeight: 750 } }, planningProgressLabel + ". "),
+                    "Initiative statuses, rankings, capacity information, and roadmap details are actively being updated and should not yet be considered final.")),
+            !isHistorical && !showPlanningProgress && selectedCycleState !== "LIVE" && React.createElement("div", { role: "status", "aria-live": "polite", style: { padding: "10px 18px", background: "#FFF8E1", borderBottom: "1px solid #E8C766", color: "#6E5200", fontSize: 12.5, lineHeight: 1.45 } },
                 React.createElement("strong", { style: { fontWeight: 750 } }, CYCLE.current + " planning is " + (selectedCycleState === "IN PROGRESS" ? "in progress" : selectedCycleState.toLowerCase()) + ". "),
                 isPrep ? "This cycle is in preparation and has not been released to normal users." : "Initiative statuses, rankings, capacity information, and roadmap details are being updated and should not yet be considered final."),
             IS_ADMIN && !driftDismissed && React.createElement(CycleDriftBanner, { drift: cycleDrift, onDismiss: function () { setDriftDismissed(true); } }),
