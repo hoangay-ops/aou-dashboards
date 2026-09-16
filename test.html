@@ -129,8 +129,9 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 })();
 </script>
 <script>
-/* Dashboard v3.0 — explicit Exploratory Concept / Committed Concept statuses.
-   Both concept statuses remain visible in portfolio views and excluded from Capacity. */
+/* Dashboard v3.1 — explicit concept statuses + simplified QPE history UX + Roadmap fix.
+   Past QPE Activity is removed because historical cycles are available in the cycle selector.
+   Roadmap legend no longer references an out-of-scope initiative item. */
 
 /* SHARED CONSTANTS / QUARTERLY CONFIGURATION
    One-time setup: publish the Dashboard Config sheet as CSV and paste its URL below.
@@ -2283,48 +2284,7 @@ function QpeMainView(props) {
                     React.createElement("div", { style: { fontSize: 9.5, color: "#6C3483", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Legacy Concept"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#6C3483", lineHeight: 1.1, marginTop: 3 } }, activeSummary.legacyConcept.length),
                     React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "historical status"))))),
-        React.createElement("details", { style: { marginBottom: 24, background: "#fff", border: "1px solid #ececec", borderRadius: 10, overflow: "hidden" } },
-            React.createElement("summary", { style: { cursor: "pointer", padding: "10px 14px", background: "#fafbfc", fontSize: 11, textTransform: "uppercase", letterSpacing: .65, color: "#607080", fontWeight: 800, display: "flex", alignItems: "center", gap: 8, listStyle: "none" } },
-                React.createElement("span", null, "Past QPE activity"),
-                React.createElement("span", { style: { fontSize: 10, color: "#8a98a8", letterSpacing: 0, textTransform: "none", fontWeight: 500 } },
-                    cycleStory.preQpeComplete.length + cycleStory.preQpeBacklogged.length + cycleStory.newCommitted.length + cycleStory.completed.length + cycleStory.backlogged.length + cycleStory.ongoing.length + cycleStory.newProposed.length + cycleStory.revived.length,
-                    " items hidden by default")),
-            React.createElement("div", { style: { padding: "12px 14px 14px" } },
-                React.createElement("div", { style: { fontSize: 11.5, color: "#7b8792", lineHeight: 1.45, marginBottom: 10 } }, "Pre-QPE dispositions and cycle-transition context are hidden by default. Decision Point is authoritative when present; temporary ID lists are used only as a fallback."),
-                React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch", marginBottom: 12 } }, [
-                    { label: "✓ Complete (pre-QPE)", items: cycleStory.preQpeComplete, sublabel: "closed during Phase 1 / before QPE", accent: "#117A65", count: cycleStory.preQpeComplete.length, color: "#117A65", bg: "#fafbfc", suffix: "before QPE" },
-                    { label: "↓ Backlogged (pre-QPE)", items: cycleStory.preQpeBacklogged, sublabel: "deferred during Phase 1 / before QPE", accent: "#7D6608", count: cycleStory.preQpeBacklogged.length, color: "#7D6608", bg: "#fafbfc", suffix: "before QPE" },
-                    { label: "+ New This Cycle (Committed)", items: cycleStory.newCommitted, sublabel: "NEW initiatives ratified this cycle", accent: "#1E8449", count: cycleStory.newCommitted.length, color: "#1E8449", bg: "#EAF7EF", suffix: "ratified" }
-                ].map(function (t) {
-                    if (t.count === 0) return null;
-                    return React.createElement("div", { key:t.label, onClick:function(){props.onListDrill({label:t.label,items:t.items,sublabel:t.sublabel,accent:t.accent});}, style:{padding:"8px 12px",flex:"1 1 170px",display:"flex",flexDirection:"column",gap:1,justifyContent:"center",cursor:"pointer",background:t.bg,border:"1px solid #ececec",borderRadius:10}},
-                        React.createElement("div", {style:{fontSize:9,textTransform:"uppercase",letterSpacing:.4,color:"#777",fontWeight:600}}, t.label),
-                        React.createElement("div", {style:{fontSize:18,fontWeight:700,color:t.color,lineHeight:1.1}}, t.count),
-                        React.createElement("div", {style:{fontSize:9.5,color:"#999"}}, t.suffix));
-                })),
-                React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch", marginBottom: newAndRevived.length > 0 ? 14 : 0 } }, [
-                    { label: "✓ Completed", items: cycleStory.completed, sublabel: "of " + cycleStory.lastCommittedTotal + " committed last cycle", accent: "#117A65", count: cycleStory.completed.length, color: "#117A65", bg: "#fafbfc", suffix: "last cycle" },
-                    { label: "↓ Backlogged", items: cycleStory.backlogged, sublabel: "of " + cycleStory.lastCommittedTotal + " committed last cycle", accent: "#7D6608", count: cycleStory.backlogged.length, color: "#7D6608", bg: "#fafbfc", suffix: "last cycle" },
-                    { label: "↻ Ongoing", items: cycleStory.ongoing, sublabel: "carried forward from last cycle", accent: "#7D6608", count: cycleStory.ongoing.length, color: "#7D6608", bg: "#fff", bdr: "#ececec", suffix: "last cycle" },
-                    { label: "+ New Proposed", items: cycleStory.newProposed, sublabel: "submitted for the current cycle", accent: "#9A6800", count: cycleStory.newProposed.length, color: "#9A6800", bg: "#FEF5E7", bdr: "#F4D03F", suffix: "current cycle" },
-                    { label: "↻ Revived", items: cycleStory.revived, sublabel: "revived for the current cycle", accent: "#6C3483", count: cycleStory.revived.length, color: "#6C3483", bg: "#fff", bdr: "#ececec", suffix: "current cycle" },
-                ].map(function (t) {
-                    if (t.count === 0)
-                        return null;
-                    return (React.createElement("div", { key: t.label, onClick: function () { props.onListDrill({ label: t.label, items: t.items, sublabel: t.sublabel, accent: t.accent }); }, style: { padding: "8px 12px", flex: "1 1 130px", display: "flex", flexDirection: "column", gap: 1, justifyContent: "center", cursor: "pointer", background: t.bg, border: "1px solid " + (t.bdr || "#ececec"), borderRadius: 10 } },
-                        React.createElement("div", { style: { fontSize: 9, textTransform: "uppercase", letterSpacing: .4, color: t.bg === "#FEF5E7" ? "#9A6800" : "#999", fontWeight: 600 } }, t.label),
-                        React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: t.color, lineHeight: 1.1 } }, t.count),
-                        React.createElement("div", { style: { fontSize: 9.5, color: t.bg === "#FEF5E7" ? "#9A6800" : "#aaa" } }, t.suffix)));
-                })),
-                newAndRevived.length > 0 && (React.createElement("div", null,
-                    React.createElement("div", { style: { fontSize: 10.5, textTransform: "uppercase", letterSpacing: .6, color: "#9A6800", fontWeight: 800, marginBottom: 8 } }, "Current-cycle New Proposed and Revived Initiatives"),
-                    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 } }, (function () {
-                        var revivedIds = {};
-                        cycleStory.revived.forEach(function (r) { revivedIds[r.id] = true; });
-                        return newAndRevived.map(function (n) {
-                            return React.createElement(QpeInitCard, { key: n.id, init: n, onDrill: onDrill, revivedFlag: Boolean(revivedIds[n.id]) });
-                        });
-                    })()))))),
+        null,
         qpeDisplay === "rank" ? (React.createElement("section", { style: { marginBottom: 24 } },
             React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#666", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
                 React.createElement("span", null,
@@ -2511,7 +2471,7 @@ function QpeView(props) {
             : React.createElement(QpeListPanel, { list: listDrill, label: listDrill.label, sublabel: listDrill.sublabel, accent: listDrill.accent, onItemDrill: function (id) { setListDrill(null); setDrill(id); }, onClose: function () { setListDrill(null); } })),
         React.createElement(ViewGuide, { open: guideOpen, onClose: function () { setGuideOpen(false); }, title: "How to use the Quarterly Planning Dashboard", intro: "Read the cycle story, inspect goal lanes, and open initiative details from one planning view.", cards: [
                 { icon: "↔", title: "Cycle story", color: "#2471A3", bg: "#F4FAFF",
-                    body: React.createElement(React.Fragment, null, "The top tiles summarize the current QPE status. Prior-cycle activity is hidden in the Past QPE activity accordion.") },
+                    body: React.createElement(React.Fragment, null, "The top tiles summarize the selected cycle. Use the Cycle selector to review prior quarters and compare historical portfolio states.") },
                 { icon: "🎯", title: "Goal lanes", color: "#6C3483", bg: "#FBF7FF",
                     body: React.createElement(React.Fragment, null, "Goal lanes group initiatives by strategic goal. Click a lane header to open goal details, including objectives and owners; click an initiative row to open its drill-down.") },
                 { icon: "🔎", title: "Filters & search", color: "#117A65", bg: "#F4FFFB",
@@ -4934,7 +4894,7 @@ function RoadmapView(props) {
             React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } },
                 React.createElement("span", { style: { fontSize: 9, textTransform: "uppercase", color: "#bbb", fontWeight: 700, letterSpacing: .5 } }, "Badges"),
                 React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 5 } },
-                    React.createElement(RmConceptBadge, { item: item })),
+                    React.createElement(RmConceptBadge, null)),
                 RM_TYPE_KEYS.map(function (t) {
                     return (React.createElement("span", { key: t, style: { display: "flex", alignItems: "center", gap: 5 } },
                         React.createElement("span", { style: { fontSize: 8, fontWeight: 700, width: 14, height: 14, borderRadius: 3, display: "inline-flex", alignItems: "center", justifyContent: "center", background: RM_TYPE_BG[t], color: RM_TYPE_COLOR[t] } }, RM_TYPE_SHORT[t]),
