@@ -4127,9 +4127,10 @@ function rmNormalizeRows(rows) {
         return Object.assign({}, m, { goal: p.goal, type: p.type, start: m.start || m.end || p.end || p.start || null });
     }).filter(function (m) { return m && m.start; });
     
-// ─── BEGIN ENG-COMMS INJECTION ───────────────────────────────────────────────
-// Dashboard-only initiative — not in Roadmap source worksheet.
-// Re-verify all dates and bar span at each cycle rollover.
+// ─── BEGIN ENG-COMMS FALLBACK ────────────────────────────────────────────────
+// Master Planning may now provide ENG-COMMS + its communications milestones.
+// Keep the legacy compiled values only as a transition fallback so source-fed
+// communications never duplicate the historical dashboard injection.
 var __engCommsInit = {
     id: "ENG-COMMS",
     name: "Engagement Communications",
@@ -4158,7 +4159,9 @@ var __engCommsInit = {
     objOwner: "",
     poc: "",
 };
-if (!inits.some(function(x){ return x && x.id === __engCommsInit.id; })) inits.push(__engCommsInit);
+var __hasSourceEngCommsInit = inits.some(function(x){ return x && x.id === __engCommsInit.id; });
+var __hasSourceEngCommsMs = resolvedMs.some(function(x){ return x && x.parent === "ENG-COMMS"; });
+if (!__hasSourceEngCommsInit) inits.push(__engCommsInit);
 
 var __engCommsMs = [
     // National Newsletter (star × 4)
@@ -4172,19 +4175,21 @@ var __engCommsMs = [
     { name: "CEO's Update", start: "2026-10-07", icon: "star", cat: "comms" },
     { name: "CEO's Update", start: "2027-01-11", icon: "star", cat: "comms" },
 ];
-__engCommsMs.forEach(function (m, idx) {
-    resolvedMs.push({
-        id: ("MS-ENG-COMMS-" + m.name + "-" + idx).replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80),
-        name: m.name,
-        start: m.start,
-        end: null,
-        cat: m.cat,
-        icon: m.icon,
-        parent: "ENG-COMMS",
-        goal: "5",
-        type: "Participant",
+if (!__hasSourceEngCommsMs) {
+    __engCommsMs.forEach(function (m, idx) {
+        resolvedMs.push({
+            id: ("MS-ENG-COMMS-" + m.name + "-" + idx).replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80),
+            name: m.name,
+            start: m.start,
+            end: null,
+            cat: m.cat,
+            icon: m.icon,
+            parent: "ENG-COMMS",
+            goal: "5",
+            type: "Participant",
+        });
     });
-});
+}
    return inits.concat(resolvedMs);
 }
 function rmEnrichRows(rows, planningLookup) {
