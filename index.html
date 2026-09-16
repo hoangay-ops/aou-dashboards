@@ -129,7 +129,7 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 })();
 </script>
 <script>
-/* Dashboard v3.2 — explicit concept statuses + simplified QPE history UX + Roadmap fix + historical Capacity team discovery.
+/* Dashboard v3.2 Roadmap Master Bridge v2 — explicit concept statuses + historical Capacity discovery + full-quarter Committed Concept planning windows.
    Past QPE Activity is removed because historical cycles are available in the cycle selector.
    Roadmap legend no longer references an out-of-scope initiative item. */
 
@@ -4330,12 +4330,26 @@ function rmPrintRoadmap() {
     function groupLabel(k) { return GOALS[k] ? ("Goal " + GOALS[k].num + ": " + GOALS[k].short) : k; }
     function rowHtml(item) {
         var hasDates = rmHasFullDates(item);
+        var isCommittedConcept = item.planningStatus === "Committed Concept";
         var barColor = GOALS[item.goal] ? GOALS[item.goal].color : "#777";
         var left = rmPctForPrint(item.start, false, vs, ve);
         var right = rmPctForPrint(item.end, true, vs, ve);
         var w = (left !== null && right !== null) ? right - left : 0;
         var bar = "";
-        if (hasDates && w > 0.2) {
+        if (isCommittedConcept) {
+            var cq = item.quarter ? rmQuarterToRange(item.quarter) : null;
+            var cl = cq ? rmPctForPrint(cq.start.toLocaleDateString("en-US"), false, vs, ve) : left;
+            var cr = cq ? rmPctForPrint(cq.end.toLocaleDateString("en-US"), true, vs, ve) : right;
+            if (cl !== null && cr !== null) {
+                cl = Math.max(0, Math.min(100, cl));
+                cr = Math.max(0, Math.min(100, cr));
+                bar = "<div class='qbar' style='left:" + cl + "%;width:" + Math.max(0.35, cr - cl) + "%;border-color:" + barColor + ";color:" + barColor + ";'>" + (item.quarter ? rmHtmlEsc(item.quarter) : "") + "</div>";
+            }
+            else {
+                bar = "<div class='tbdbar'>TBD</div>";
+            }
+        }
+        else if (hasDates && w > 0.2) {
             var l = Math.max(0, Math.min(100, left)), r = Math.max(0, Math.min(100, right));
             var ww = Math.max(0.35, r - l);
             bar = "<div class='bar' style='left:" + l + "%;width:" + ww + "%;background:" + barColor + ";'>" + (ww > 5 ? rmHtmlEsc(item.name) : "") + "</div>";
@@ -5006,20 +5020,31 @@ function RoadmapView(props) {
                                         var l2 = pct(item.start, false), r2 = pct(item.end, true);
                                         var w = (l2 !== null && r2 !== null) ? r2 - l2 : 0;
                                         var hasDates = rmHasFullDates(item), barCol = GOALS[item.goal] ? GOALS[item.goal].color : "#888", isDone = rmIsComplete(item);
+                                        var isCommittedConcept = item.planningStatus === "Committed Concept";
                                         var capacityFlagged = Boolean(showAud && noCapacityTeams(item.id));
                                         var timelineBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : "transparent");
                                         var ms = getMs(item.id);
                                         var spread = rmSpreadMs(ms, function (d, isEnd) { return pct(d, isEnd, true); });
-                                        var qCol = (!hasDates && item.quarter) ? rmFindQuarterCol(item.quarter, cols) : null;
+                                        /* Committed Concepts are future work: when a quarter is supplied,
+                                           render the full quarter as a faint/dashed planning window. Exact
+                                           dates remain usable when no quarter is supplied, but keep the same
+                                           future-work visual treatment rather than a solid execution bar. */
+                                        var conceptQuarter = (isCommittedConcept && item.quarter) ? rmQuarterToRange(item.quarter) : null;
+                                        var conceptL = conceptQuarter ? pct(conceptQuarter.start.toLocaleDateString("en-US"), false) : (isCommittedConcept && hasDates ? l2 : null);
+                                        var conceptR = conceptQuarter ? pct(conceptQuarter.end.toLocaleDateString("en-US"), true) : (isCommittedConcept && hasDates ? r2 : null);
+                                        var conceptW = (conceptL !== null && conceptR !== null) ? conceptR - conceptL : 0;
+                                        var qCol = (!hasDates && !isCommittedConcept && item.quarter) ? rmFindQuarterCol(item.quarter, cols) : null;
                                         var qL = qCol ? pct(qCol.start.toLocaleDateString("en-US"), false) : null;
                                         var qR = qCol ? pct(qCol.end.toLocaleDateString("en-US"), true) : null;
                                         var qW = (qL !== null && qR !== null) ? qR - qL : 0;
                                         return (React.createElement("div", { key: item.id, style: { height: RM_ROW_H, position: "relative", borderBottom: "1px solid #f5f5f5", background: timelineBg, opacity: rs.opacity } },
                                             React.createElement(RmGridLines, { n: cols.length, faint: true }),
-                                            hasDates && w > 0.2 && (React.createElement("div", { onClick: function () { selectInitiative(item.id); }, title: renderText(item.name), style: { position: "absolute", top: 9, height: 20, borderRadius: 4, cursor: "pointer", left: l2 + "%", width: w + "%", background: barCol, opacity: isDone ? .35 : .85, zIndex: 2, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.05)" } })),
-                                            !hasDates && qW > 0.2 && (React.createElement("div", { onClick: function () { selectInitiative(item.id); }, style: { position: "absolute", top: 12, height: 14, borderRadius: 3, cursor: "pointer", left: qL + "%", width: qW + "%", background: barCol, opacity: .15, zIndex: 2, border: "1.5px dashed " + barCol, display: "flex", alignItems: "center", justifyContent: "center" } },
+                                            hasDates && !isCommittedConcept && w > 0.2 && (React.createElement("div", { onClick: function () { selectInitiative(item.id); }, title: renderText(item.name), style: { position: "absolute", top: 9, height: 20, borderRadius: 4, cursor: "pointer", left: l2 + "%", width: w + "%", background: barCol, opacity: isDone ? .35 : .85, zIndex: 2, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.05)" } })),
+                                            isCommittedConcept && conceptW > 0.2 && (React.createElement("div", { onClick: function () { selectInitiative(item.id); }, title: item.quarter ? ("Future work window: " + item.quarter) : renderText(item.name), style: { position: "absolute", top: 12, height: 14, borderRadius: 3, cursor: "pointer", left: conceptL + "%", width: conceptW + "%", background: barCol, opacity: .15, zIndex: 2, border: "1.5px dashed " + barCol, display: "flex", alignItems: "center", justifyContent: "center" } },
+                                                item.quarter && (React.createElement("span", { style: { fontSize: 9, fontWeight: 600, color: barCol } }, item.quarter)))),
+                                            !hasDates && !isCommittedConcept && qW > 0.2 && (React.createElement("div", { onClick: function () { selectInitiative(item.id); }, style: { position: "absolute", top: 12, height: 14, borderRadius: 3, cursor: "pointer", left: qL + "%", width: qW + "%", background: barCol, opacity: .15, zIndex: 2, border: "1.5px dashed " + barCol, display: "flex", alignItems: "center", justifyContent: "center" } },
                                                 React.createElement("span", { style: { fontSize: 9, fontWeight: 600, color: barCol } }, item.quarter))),
-                                            !hasDates && !qW && (React.createElement("div", { onClick: function () { selectInitiative(item.id); }, title: "No scheduled dates yet", style: { position: "absolute", top: 15, left: "4%", right: "4%", height: 8, borderRadius: 3, cursor: "pointer", zIndex: 2, background: "repeating-linear-gradient(90deg,#e0e0e0 0,#e0e0e0 4px,transparent 4px,transparent 8px)", opacity: .35 } })),
+                                            ((!hasDates && !isCommittedConcept && !qW) || (isCommittedConcept && !conceptW)) && (React.createElement("div", { onClick: function () { selectInitiative(item.id); }, title: "No scheduled dates yet", style: { position: "absolute", top: 15, left: "4%", right: "4%", height: 8, borderRadius: 3, cursor: "pointer", zIndex: 2, background: "repeating-linear-gradient(90deg,#e0e0e0 0,#e0e0e0 4px,transparent 4px,transparent 8px)", opacity: .35 } })),
                                             spread.map(function (m) {
                                                 return (React.createElement("span", { key: m.id, onMouseEnter: function (e) { setTooltip({ x: e.clientX, y: e.clientY, name: m.name, date: rmFmtDate(m.start), cat: m.cat, icon: m.icon }); }, onMouseLeave: function () { setTooltip(null); }, onClick: function (e) { e.stopPropagation(); }, style: { position: "absolute", top: 9 + m.yo, left: m.pv + "%", transform: "translateX(-8px)", zIndex: 10, cursor: "pointer", display: "inline-flex", flexDirection: "column", alignItems: "center", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.25))" } },
                                                     React.createElement("div", { style: { width: 1, height: hasDates ? 4 : 2, background: RM_MILESTONE_COLOR, opacity: .7 } }),
