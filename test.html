@@ -129,7 +129,7 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 })();
 </script>
 <script>
-/* Dashboard v3.1 — explicit concept statuses + simplified QPE history UX + Roadmap fix.
+/* Dashboard v3.2 — explicit concept statuses + simplified QPE history UX + Roadmap fix + historical Capacity team discovery.
    Past QPE Activity is removed because historical cycles are available in the cycle selector.
    Roadmap legend no longer references an out-of-scope initiative item. */
 
@@ -2555,6 +2555,10 @@ const CAP_STAFF_CFG = {
 function capNormTeamName(s) {
     return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
+function capIsHistoricalCycle() {
+    return String(SELECTED_CYCLE_STATE || "").toUpperCase() === "ARCHIVED" ||
+        (CONFIG_CURRENT_CYCLE && CYCLE.current !== CONFIG_CURRENT_CYCLE);
+}
 function capDiscoverTeamBlocks(rows, hi) {
     var currentKnown = {};
     CAP_TEAMS.forEach(function (name) { currentKnown[capNormTeamName(name)] = name; });
@@ -2572,7 +2576,10 @@ function capDiscoverTeamBlocks(rows, hi) {
         var foundCurrent = "";
         var foundLegacy = "";
         var headerText = [];
-        for (var rr = scanStartRow; rr < hi; rr++) {
+        /* Historical Calculations sheets may place team names on the same row as
+           the ID/summary headers, while the current workbook places them above it.
+           Scan through the detected header row so both layouts are supported. */
+        for (var rr = scanStartRow; rr <= hi && rr < rows.length; rr++) {
             var row = rows[rr] || [];
             for (var cc = base; cc < Math.min(base + 5, row.length); cc++) {
                 var raw = String(row[cc] || "").trim();
@@ -2600,13 +2607,23 @@ function capDiscoverTeamBlocks(rows, hi) {
             legacyBlocks.push({ name: foundLegacy, base: base, position: pos });
         }
     }
+    var recognized = blocks.filter(function (b) { return b.kind === "current" || b.kind === "legacy"; });
     var missing = CAP_TEAMS.filter(function (name) { return mapping[name] == null; });
     var mismatches = [];
-    if (missing.length)
-        mismatches.push("Missing current Capacity team block(s): " + missing.join(", "));
-    if (duplicates.length)
-        mismatches.push("Duplicate current Capacity team block(s): " + Array.from(new Set(duplicates)).join(", "));
-    return { map: mapping, blocks: blocks, legacyBlocks: legacyBlocks, missing: missing, duplicates: duplicates, mismatches: mismatches };
+    if (capIsHistoricalCycle()) {
+        /* Archived cycles preserve the performer structure that actually existed in
+           that quarter. Do not require today's 21-team schema; only fail when the
+           historical team blocks cannot be discovered at all. */
+        if (!recognized.length)
+            mismatches.push("No recognizable historical Capacity team blocks were found in the Calculations header.");
+    }
+    else {
+        if (missing.length)
+            mismatches.push("Missing current Capacity team block(s): " + missing.join(", "));
+        if (duplicates.length)
+            mismatches.push("Duplicate current Capacity team block(s): " + Array.from(new Set(duplicates)).join(", "));
+    }
+    return { map: mapping, blocks: blocks, recognized: recognized, legacyBlocks: legacyBlocks, missing: missing, duplicates: duplicates, mismatches: mismatches };
 }
 
 const CAP_CI_METHODOLOGY = "Confidence Index = weighted sum ÷ performers. Definitely +1.0, Possibly XS/S +0.8, Possibly M 0, Possibly L/XL −0.5, No Capacity −1.0. Thresholds: 8–10 on track, 6–7 monitor, ≤5 at risk.";
@@ -2768,6 +2785,10 @@ function capParseCapacity(csvText) {
     }
     var teamLayout = capDiscoverTeamBlocks(rows, hi);
     var mismatches = teamLayout.mismatches.slice();
+    var historical = capIsHistoricalCycle();
+    var teamsToRead = historical
+        ? teamLayout.recognized.map(function (b) { return { name: b.name, base: b.base }; })
+        : CAP_TEAMS.map(function (name) { return { name: name, base: teamLayout.map[name] }; });
     var get = makeRowAccessor(rows[hi]);
     var body = rows.slice(hi + 1);
     var map = {};
@@ -2781,11 +2802,13 @@ function capParseCapacity(csvText) {
         var cm = lbl.match(/(\d+)/);
         function int(k) { return parseInt(get(row, k)) || 0; }
         var performers = [];
-        CAP_TEAMS.forEach(function (name) {
-            var base = teamLayout.map[name];
+        teamsToRead.forEach(function (team) {
+            var name = team.name;
+            var base = team.base;
             if (base == null || base >= row.length)
                 return;
-            var isPerformer = String(row[base] || "").trim() === "1";
+            var performerRaw = String(row[base] || "").trim();
+            var isPerformer = performerRaw === "1" || /^(true|yes|y)$/i.test(performerRaw);
             if (!isPerformer)
                 return;
             var q3loe = String(row[base + 1] || "").trim();
@@ -2805,6 +2828,7 @@ function capParseCapacity(csvText) {
         };
     });
     Object.defineProperty(map, "_mismatches", { value: mismatches, enumerable: false });
+    Object.defineProperty(map, "_teamNames", { value: teamsToRead.map(function (t) { return t.name; }), enumerable: false });
     return map;
 }
 function CapMiniBar(props) {
@@ -2953,7 +2977,7 @@ function CapMismatchBanner(props) {
                     props.mismatches.length,
                     ")"),
                 React.createElement("div", { style: { fontSize: 11, lineHeight: 1.5 } },
-                    "The Calculations tab columns don't match the expected TEAMS order. Drill-down performer attribution may be incorrect until the dashboard code or the sheet column order is fixed.",
+                    "The Calculations tab team blocks could not be mapped reliably for this cycle. Current cycles require the canonical team schema; archived cycles use the historical team headers stored in that snapshot.",
                     React.createElement("ul", { style: { margin: "6px 0 0 18px", padding: 0, fontSize: 10.5, fontFamily: "monospace", color: "#922b21" } }, props.mismatches.map(function (m, i) { return React.createElement("li", { key: i, style: { marginBottom: 2 } }, m); })))),
             React.createElement("button", { onClick: props.onDismiss, title: "Dismiss", style: { border: "none", background: "none", color: "#7B241C", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: "0 4px", flexShrink: 0 } }, "\u00D7"))));
 }
@@ -3223,6 +3247,15 @@ function CapacityView(props) {
             return {};
         return capParseCapacity(data.state.capacityCsv);
     }, [data.state.status, data.state.capacityCsv]);
+    var capacityTeamOptions = useMemo(function () {
+        var names = capData && capData._teamNames ? capData._teamNames.slice() : CAP_TEAMS.slice();
+        var seen = {};
+        return names.filter(function (name) {
+            if (!name || seen[name]) return false;
+            seen[name] = true;
+            return true;
+        });
+    }, [capData]);
     var capacityIds = useMemo(function () {
         var s = {};
         Object.keys(capData).forEach(function (k) {
@@ -3482,9 +3515,9 @@ function CapacityView(props) {
                     GOALS[k].num,
                     ": ",
                     GOALS[k].short); })),
-            React.createElement(MultiSelect, { label: "Performer", options: CAP_TEAMS, selected: teamFilter, onChange: setTeamFilter }),
-            React.createElement(CapAwardeeShortcut, { label: "DRC", groupTeams: CAP_TEAMS.filter(function (t) { return t.indexOf("DRC") === 0; }), selected: teamFilter, onChange: setTeamFilter }),
-            React.createElement(CapAwardeeShortcut, { label: "PPSC", groupTeams: CAP_TEAMS.filter(function (t) { return t.indexOf("PPSC") === 0; }), selected: teamFilter, onChange: setTeamFilter }),
+            React.createElement(MultiSelect, { label: "Performer", options: capacityTeamOptions, selected: teamFilter, onChange: setTeamFilter }),
+            React.createElement(CapAwardeeShortcut, { label: "DRC", groupTeams: capacityTeamOptions.filter(function (t) { return t.indexOf("DRC") === 0; }), selected: teamFilter, onChange: setTeamFilter }),
+            React.createElement(CapAwardeeShortcut, { label: "PPSC", groupTeams: capacityTeamOptions.filter(function (t) { return t.indexOf("PPSC") === 0; }), selected: teamFilter, onChange: setTeamFilter }),
             (search || goalFilter !== "all" || tierFilter !== "all" || teamFilter.length > 0) &&
                 React.createElement("button", { onClick: function () { setSearch(""); setGoalFilter("all"); setTierFilter("all"); setTeamFilter([]); }, style: { fontSize: 11.5, background: "none", border: "none", color: "#C0392B", cursor: "pointer", fontWeight: 600 } }, "\u2715 Clear"),
             React.createElement("div", { style: { flex: 1 } }),
