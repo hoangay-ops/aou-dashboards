@@ -129,7 +129,7 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 })();
 </script>
 <script>
-/* Dashboard v3.2 — explicit concept statuses + simplified QPE history UX + Roadmap fix + historical Capacity team discovery.
+/* Dashboard v3.3 — explicit concept statuses + simplified QPE history UX + Roadmap fix + historical Capacity team discovery.
    Past QPE Activity is removed because historical cycles are available in the cycle selector.
    Roadmap legend no longer references an out-of-scope initiative item. */
 
@@ -2182,58 +2182,24 @@ function QpeMainView(props) {
     var qpeSort = props.qpeSort || "id";
     var qpeDisplay = props.qpeDisplay || "goal";
     var summaryInitiatives = props.summaryInitiatives || initiatives;
-    /* Current-cycle active summary — answers "what's ratified and active
-       right now" using only this-cycle status. Does not depend on
-       cross-cycle history columns, so it works even when the Planning
-       Sheet has been split across separate per-cycle files. */
+    /* Current-cycle portfolio summary. Status drives the primary grouping;
+       NEW and REVIVED are scoped subsets of Proposed rather than peer statuses. */
     var activeSummary = useMemo(function () {
         var committed = summaryInitiatives.filter(function (i) { return i.status === "Committed"; });
         var proposed = summaryInitiatives.filter(function (i) { return i.status === "Proposed"; });
-        var backlogged = summaryInitiatives.filter(function (i) { return i.status === "Backlogged" && !qpeIsPreQpeDisposition(i, "Backlogged"); });
-        var complete = summaryInitiatives.filter(function (i) { return i.status === "Complete" && !qpeIsPreQpeDisposition(i, "Complete"); });
+        var backlogged = summaryInitiatives.filter(function (i) { return i.status === "Backlogged"; });
+        var complete = summaryInitiatives.filter(function (i) { return i.status === "Complete"; });
+        var eliminated = summaryInitiatives.filter(function (i) { return i.status === "Eliminated"; });
         var exploratoryConcept = summaryInitiatives.filter(function (i) { return i.status === "Exploratory Concept"; });
         var committedConcept = summaryInitiatives.filter(function (i) { return i.status === "Committed Concept"; });
         var legacyConcept = summaryInitiatives.filter(function (i) { return i.status === "Concept"; });
-        var newDesignated = summaryInitiatives.filter(function (i) { return i.isNew; });
-        return { committed: committed, proposed: proposed, backlogged: backlogged, complete: complete, exploratoryConcept: exploratoryConcept, committedConcept: committedConcept, legacyConcept: legacyConcept, newDesignated: newDesignated };
+        /* NEW and REVIVED are attributes of the Proposed consideration set, not
+           peer portfolio statuses. Keep their counts scoped to Proposed so the
+           cards cannot imply that every New/Revived row is under QPE review. */
+        var newProposed = proposed.filter(function (i) { return i.isNew; });
+        var revivedProposed = proposed.filter(qpeIsRevived);
+        return { committed: committed, proposed: proposed, backlogged: backlogged, complete: complete, eliminated: eliminated, exploratoryConcept: exploratoryConcept, committedConcept: committedConcept, legacyConcept: legacyConcept, newProposed: newProposed, revivedProposed: revivedProposed };
     }, [summaryInitiatives]);
-    var cycleStory = useMemo(function () {
-        var lastCommittedIds = {}, lastBackloggedIds = {};
-        summaryInitiatives.forEach(function (i) {
-            var q2H = i.history.find(function (h) { return h.quarter === CYCLE.previous; });
-            if (q2H && q2H.status === "Committed")
-                lastCommittedIds[i.id] = true;
-            if (q2H && q2H.status === "Backlogged")
-                lastBackloggedIds[i.id] = true;
-        });
-        var lastCommitted = Object.keys(lastCommittedIds);
-        var completed = summaryInitiatives.filter(function (i) { return lastCommittedIds[i.id] && i.status === "Complete" && !qpeIsPreQpeDisposition(i, "Complete"); });
-        var backlogged = summaryInitiatives.filter(function (i) { return lastCommittedIds[i.id] && i.status === "Backlogged" && !qpeIsPreQpeDisposition(i, "Backlogged"); });
-        var ongoing = summaryInitiatives.filter(function (i) { return lastCommittedIds[i.id] && (i.status === "Proposed" || i.status === "Committed") && !i.isNew; });
-        var newProposed = summaryInitiatives.filter(function (i) {
-            if (!i.isNew)
-                return false;
-            if (i.status !== "Proposed")
-                return false;
-            var hadPriorHistory = i.history.some(function (h) { return h.quarter !== CYCLE.current && h.status; });
-            return !hadPriorHistory;
-        });
-        var revived = summaryInitiatives.filter(qpeIsRevived);
-        var preQpeComplete = summaryInitiatives.filter(function(i){ return qpeIsPreQpeDisposition(i, "Complete"); });
-        var preQpeBacklogged = summaryInitiatives.filter(function(i){ return qpeIsPreQpeDisposition(i, "Backlogged"); });
-        var newCommitted = summaryInitiatives.filter(function(i){ return i.isNew && i.status === "Committed" && qpePrimaryRank(i) != null; });
-        return { lastCommittedTotal: lastCommitted.length, completed: completed, backlogged: backlogged, ongoing: ongoing, newProposed: newProposed, revived: revived, preQpeComplete: preQpeComplete, preQpeBacklogged: preQpeBacklogged, newCommitted: newCommitted };
-    }, [summaryInitiatives]);
-    var newAndRevived = useMemo(function () {
-        var seen = {}, out = [];
-        cycleStory.newProposed.concat(cycleStory.revived).forEach(function (i) {
-            if (seen[i.id])
-                return;
-            seen[i.id] = true;
-            out.push(i);
-        });
-        return out;
-    }, [cycleStory.newProposed, cycleStory.revived]);
     var goalLanes = {};
     Object.keys(GOALS).forEach(function (k) { goalLanes[k] = []; });
     initiatives.forEach(function (i) { if (goalLanes[i.goal])
@@ -2243,47 +2209,63 @@ function QpeMainView(props) {
     });
     var rankListItems = initiatives.filter(function (i) { return qpePrimaryRank(i) != null; }).sort(function (a, b) { return qpeCompareItems(a, b, qpeSort); });
     return (React.createElement("div", { style: { padding: "20px 28px 32px" } },
-        React.createElement("section", { style: { marginBottom: 20 } },
-            React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#666", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
-                React.createElement("span", null,
-                    "Portfolio Status \u2014 ",
-                    CYCLE.current,
-                    " - ",
-                    CYCLE.activeThrough),
-                React.createElement("span", { style: { flex: 1, height: 1, background: "#ddd" } })),
-            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 } },
-                React.createElement("div", { onClick: function () { props.onListDrill({ label: "Committed — " + CYCLE.current, items: activeSummary.committed, sublabel: "ranked and ratified this cycle", accent: "#1E8449" }); }, style: { padding: "12px 14px", background: "#EAF7EF", border: "1px solid #ABEBC6", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#1E8449", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "\u2713 Committed"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#1E8449", lineHeight: 1.1, marginTop: 3 } }, activeSummary.committed.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#1E8449", opacity: .75, marginTop: 2 } }, "ratified this cycle")),
-                React.createElement("div", { onClick: function () { props.onListDrill({ label: "Proposed — " + CYCLE.current, items: activeSummary.proposed, sublabel: "awaiting ratification", accent: "#9A6800" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#9A6800", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Proposed"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#9A6800", lineHeight: 1.1, marginTop: 3 } }, activeSummary.proposed.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "not ranked")),
-                React.createElement("div", { onClick: function () { props.onListDrill({ label: "New Initiatives — " + CYCLE.current, items: activeSummary.newDesignated, sublabel: "Project Type = New", accent: "#B3541E" }); }, style: { padding: "12px 14px", background: "#FFF8F2", border: "1px solid #F0C9AF", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#B3541E", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "+ New Initiatives"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#B3541E", lineHeight: 1.1, marginTop: 3 } }, activeSummary.newDesignated.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#9A6A4A", marginTop: 2 } }, "Project Type = New")),
-                activeSummary.backlogged.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Backlogged — " + CYCLE.current, items: activeSummary.backlogged, sublabel: "deferred this cycle", accent: "#7D6608" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#7D6608", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Backlogged"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#7D6608", lineHeight: 1.1, marginTop: 3 } }, activeSummary.backlogged.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "deferred"))),
-                activeSummary.complete.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Complete — " + CYCLE.current, items: activeSummary.complete, sublabel: "closed this cycle", accent: "#1E8449" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#1E8449", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Complete"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#1E8449", lineHeight: 1.1, marginTop: 3 } }, activeSummary.complete.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "closed"))),
-                activeSummary.exploratoryConcept.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Exploratory Concept — " + CYCLE.current, items: activeSummary.exploratoryConcept, sublabel: "visibility only; no current work or capacity collection", accent: "#6C3483" }); }, style: { padding: "12px 14px", background: "#FBF7FF", border: "1px solid #D7BDE2", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#6C3483", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Exploratory Concept"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#6C3483", lineHeight: 1.1, marginTop: 3 } }, activeSummary.exploratoryConcept.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#7D6B86", marginTop: 2 } }, "visibility only · no capacity"))),
-                activeSummary.committedConcept.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Committed Concept — " + CYCLE.current, items: activeSummary.committedConcept, sublabel: "fully funded for future start; no current-quarter capacity collection", accent: "#3949AB" }); }, style: { padding: "12px 14px", background: "#F4F5FC", border: "1px solid #C5CAE9", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#3949AB", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Committed Concept"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#3949AB", lineHeight: 1.1, marginTop: 3 } }, activeSummary.committedConcept.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#6F76A8", marginTop: 2 } }, "funded · future start · no capacity"))),
-                activeSummary.legacyConcept.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Legacy Concept — " + CYCLE.current, items: activeSummary.legacyConcept, sublabel: "legacy Concept status; excluded from capacity", accent: "#6C3483" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#6C3483", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Legacy Concept"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#6C3483", lineHeight: 1.1, marginTop: 3 } }, activeSummary.legacyConcept.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "historical status"))))),
+        React.createElement("section", { style: { marginBottom: 24 } },
+            React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#56697D", fontWeight: 800, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
+                React.createElement("span", null, "Portfolio Status — ", CYCLE.current),
+                React.createElement("span", { style: { flex: 1, height: 1, background: "#D9E1E8" } })),
+
+            /* Primary decision population: Proposed only. NEW and REVIVED are
+               rendered as subsets inside this block rather than peer statuses. */
+            React.createElement("div", { style: { padding: "16px 18px 18px", borderRadius: 12, border: "1px solid #B9D6F2", background: "#F3F8FD", marginBottom: 14 } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 4 } },
+                    React.createElement("div", { style: { width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "#2471A3", color: "#fff", fontWeight: 800, fontSize: 16, flexShrink: 0 } }, "◎"),
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { fontSize: 17, color: "#145A96", fontWeight: 800, lineHeight: 1.2 } }, "Under Consideration for ", CYCLE.current, " QPE"),
+                        React.createElement("div", { style: { fontSize: 11.5, color: "#536B82", marginTop: 2 } }, "Initiatives in the current planning, capacity, and QPE consideration set."))),
+                React.createElement("div", { onClick: function () { props.onListDrill({ label: "Proposed — " + CYCLE.current, items: activeSummary.proposed, sublabel: "current QPE consideration set", accent: "#9A6800" }); }, style: { marginTop: 13, padding: "14px 16px", borderRadius: 10, background: "#FFFDF7", border: "1px solid #E8C766", cursor: "pointer", display: "grid", gridTemplateColumns: "minmax(175px, 1.1fr) minmax(220px, 1fr) auto", gap: 16, alignItems: "center" } },
+                    React.createElement("div", { style: { minWidth: 0 } },
+                        React.createElement("div", { style: { fontSize: 10, color: "#8A6200", fontWeight: 800, textTransform: "uppercase", letterSpacing: .55 } }, "Proposed"),
+                        React.createElement("div", { style: { fontSize: 34, fontWeight: 850, color: "#9A6800", lineHeight: 1.05, marginTop: 2 } }, activeSummary.proposed.length),
+                        React.createElement("div", { style: { fontSize: 10.5, color: "#746A52", marginTop: 4 } }, "in the ", CYCLE.current, " planning / QPE consideration set")),
+                    React.createElement("div", { style: { borderLeft: "1px solid #E8D9B4", paddingLeft: 16, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 } },
+                        activeSummary.newProposed.length > 0 && React.createElement("div", { onClick: function (e) { e.stopPropagation(); props.onListDrill({ label: "NEW Proposed — " + CYCLE.current, items: activeSummary.newProposed, sublabel: "Proposed initiatives with Project Type = New", accent: "#B3541E" }); }, style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer" } },
+                            React.createElement("span", { style: { minWidth: 62, textAlign: "center", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 12, background: "#FDEBD0", color: "#B3541E" } }, activeSummary.newProposed.length, " NEW"),
+                            React.createElement("span", { style: { fontSize: 10.5, color: "#6F6252" } }, "first-time proposals in this consideration set")),
+                        activeSummary.revivedProposed.length > 0 && React.createElement("div", { onClick: function (e) { e.stopPropagation(); props.onListDrill({ label: "Revived Proposed — " + CYCLE.current, items: activeSummary.revivedProposed, sublabel: "previously backlogged, now Proposed", accent: "#6C3483" }); }, style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer" } },
+                            React.createElement("span", { style: { minWidth: 62, textAlign: "center", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 12, background: "#F4ECF7", color: "#6C3483" } }, activeSummary.revivedProposed.length, " REVIVED"),
+                            React.createElement("span", { style: { fontSize: 10.5, color: "#6F6252" } }, "previously backlogged, now Proposed"))),
+                    React.createElement("div", { style: { fontSize: 22, color: "#8A6200", paddingRight: 2 } }, "›"))),
+
+            activeSummary.committed.length > 0 && React.createElement("div", { style: { marginBottom: 14 } },
+                React.createElement("div", { style: { fontSize: 10.5, color: "#1E8449", fontWeight: 800, textTransform: "uppercase", letterSpacing: .55, marginBottom: 7 } }, "Ratified This Cycle"),
+                React.createElement("div", { onClick: function () { props.onListDrill({ label: "Committed — " + CYCLE.current, items: activeSummary.committed, sublabel: "ranked and ratified this cycle", accent: "#1E8449" }); }, style: { padding: "11px 14px", background: "#EAF7EF", border: "1px solid #ABEBC6", borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 } },
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { fontSize: 10, color: "#1E8449", fontWeight: 800, textTransform: "uppercase", letterSpacing: .4 } }, "✓ Committed"),
+                        React.createElement("div", { style: { fontSize: 10, color: "#538A69", marginTop: 2 } }, "decision complete — no longer awaiting QPE consideration")),
+                    React.createElement("div", { style: { fontSize: 25, fontWeight: 800, color: "#1E8449" } }, activeSummary.committed.length))),
+
+            React.createElement("div", { style: { padding: "15px 16px 14px", borderRadius: 12, border: "1px solid #DDE3E8", background: "#FAFBFC" } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9, marginBottom: 4 } },
+                    React.createElement("div", { style: { width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "#66788A", color: "#fff", fontSize: 14, flexShrink: 0 } }, "◉"),
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { fontSize: 15, color: "#334E68", fontWeight: 800 } }, "Portfolio Visibility — Not Under Consideration This Quarter"),
+                        React.createElement("div", { style: { fontSize: 11, color: "#748494", marginTop: 2 } }, "Visible for portfolio context, but outside current-quarter capacity collection and QPE consideration."))),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 9, marginTop: 12 } }, [
+                    { key:"exploratory", label:"Exploratory Concept", items:activeSummary.exploratoryConcept, sub:"early-stage ideas", note:"visibility only", accent:"#6C3483", bg:"#FBF7FF", bdr:"#D7BDE2" },
+                    { key:"committedConcept", label:"Committed Concept", items:activeSummary.committedConcept, sub:"funded future work", note:"not starting this quarter", accent:"#3949AB", bg:"#F4F5FC", bdr:"#C5CAE9" },
+                    { key:"backlogged", label:"Backlogged", items:activeSummary.backlogged, sub:"deferred", note:"not in QPE consideration", accent:"#7D6608", bg:"#FFFDF8", bdr:"#E8DFC6" },
+                    { key:"complete", label:"Complete", items:activeSummary.complete, sub:"closed", note:"no further consideration", accent:"#1E8449", bg:"#F7FCF9", bdr:"#D4E9DC" },
+                    { key:"eliminated", label:"Eliminated", items:activeSummary.eliminated, sub:"removed from portfolio", note:"not under consideration", accent:"#C0392B", bg:"#FFF8F7", bdr:"#F1D1CC" },
+                    { key:"legacyConcept", label:"Legacy Concept", items:activeSummary.legacyConcept, sub:"historical classification", note:"visibility only", accent:"#6C3483", bg:"#FFFFFF", bdr:"#E1E5E9" }
+                ].map(function (t) {
+                    if (!t.items || t.items.length === 0) return null;
+                    return React.createElement("div", { key:t.key, onClick:function(){ props.onListDrill({ label:t.label + " — " + CYCLE.current, items:t.items, sublabel:t.sub + "; " + t.note, accent:t.accent }); }, style:{ padding:"11px 12px", borderRadius:9, border:"1px solid " + t.bdr, background:t.bg, cursor:"pointer", minHeight:94 } },
+                        React.createElement("div", { style:{ fontSize:9.2, textTransform:"uppercase", letterSpacing:.35, color:t.accent, fontWeight:800, lineHeight:1.25 } }, t.label),
+                        React.createElement("div", { style:{ fontSize:25, color:t.accent, fontWeight:800, lineHeight:1.1, marginTop:5 } }, t.items.length),
+                        React.createElement("div", { style:{ fontSize:10, color:"#5F6D79", marginTop:4 } }, t.sub),
+                        React.createElement("div", { style:{ fontSize:9.5, color:"#8A97A3", marginTop:2 } }, t.note));
+                })),
+                React.createElement("div", { style: { marginTop: 11, padding: "8px 10px", borderRadius: 7, background: "#F2F5F7", color: "#687987", fontSize: 10.5, lineHeight: 1.4 } }, "These initiatives remain visible for reference, planning, and future consideration, but are not part of this quarter's capacity planning or QPE decision set."))),
         null,
         qpeDisplay === "rank" ? (React.createElement("section", { style: { marginBottom: 24 } },
             React.createElement("div", { style: { fontSize: 11, textTransform: "uppercase", letterSpacing: .8, color: "#666", fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 } },
@@ -2471,7 +2453,7 @@ function QpeView(props) {
             : React.createElement(QpeListPanel, { list: listDrill, label: listDrill.label, sublabel: listDrill.sublabel, accent: listDrill.accent, onItemDrill: function (id) { setListDrill(null); setDrill(id); }, onClose: function () { setListDrill(null); } })),
         React.createElement(ViewGuide, { open: guideOpen, onClose: function () { setGuideOpen(false); }, title: "How to use the Quarterly Planning Dashboard", intro: "Read the cycle story, inspect goal lanes, and open initiative details from one planning view.", cards: [
                 { icon: "↔", title: "Cycle story", color: "#2471A3", bg: "#F4FAFF",
-                    body: React.createElement(React.Fragment, null, "The top tiles summarize the selected cycle. Use the Cycle selector to review prior quarters and compare historical portfolio states.") },
+                    body: React.createElement(React.Fragment, null, "The Portfolio Status section separates initiatives under current-quarter QPE consideration from items retained for portfolio visibility. NEW and REVIVED are shown as subsets of Proposed. Use the Cycle selector to review prior quarters.") },
                 { icon: "🎯", title: "Goal lanes", color: "#6C3483", bg: "#FBF7FF",
                     body: React.createElement(React.Fragment, null, "Goal lanes group initiatives by strategic goal. Click a lane header to open goal details, including objectives and owners; click an initiative row to open its drill-down.") },
                 { icon: "🔎", title: "Filters & search", color: "#117A65", bg: "#F4FFFB",
