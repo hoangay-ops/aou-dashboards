@@ -129,7 +129,7 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 })();
 </script>
 <script>
-/* Dashboard v3.2 — explicit concept statuses + simplified QPE history UX + Roadmap fix + historical Capacity team discovery.
+/* Dashboard v3.2 — reverted baseline + Roadmap sticky date header + deduplicated concept badges + full-quarter concept timing.
    Past QPE Activity is removed because historical cycles are available in the cycle selector.
    Roadmap legend no longer references an out-of-scope initiative item. */
 
@@ -4127,9 +4127,10 @@ function rmNormalizeRows(rows) {
         return Object.assign({}, m, { goal: p.goal, type: p.type, start: m.start || m.end || p.end || p.start || null });
     }).filter(function (m) { return m && m.start; });
     
-// ─── BEGIN ENG-COMMS INJECTION ───────────────────────────────────────────────
-// Dashboard-only initiative — not in Roadmap source worksheet.
-// Re-verify all dates and bar span at each cycle rollover.
+// ─── BEGIN ENG-COMMS FALLBACK ────────────────────────────────────────────────
+// Master Planning may now provide ENG-COMMS + its communications milestones.
+// Keep the legacy compiled values only as a transition fallback so source-fed
+// communications never duplicate the historical dashboard injection.
 var __engCommsInit = {
     id: "ENG-COMMS",
     name: "Engagement Communications",
@@ -4158,7 +4159,9 @@ var __engCommsInit = {
     objOwner: "",
     poc: "",
 };
-if (!inits.some(function(x){ return x && x.id === __engCommsInit.id; })) inits.push(__engCommsInit);
+var __hasSourceEngCommsInit = inits.some(function(x){ return x && x.id === __engCommsInit.id; });
+var __hasSourceEngCommsMs = resolvedMs.some(function(x){ return x && x.parent === "ENG-COMMS"; });
+if (!__hasSourceEngCommsInit) inits.push(__engCommsInit);
 
 var __engCommsMs = [
     // National Newsletter (star × 4)
@@ -4172,19 +4175,21 @@ var __engCommsMs = [
     { name: "CEO's Update", start: "2026-10-07", icon: "star", cat: "comms" },
     { name: "CEO's Update", start: "2027-01-11", icon: "star", cat: "comms" },
 ];
-__engCommsMs.forEach(function (m, idx) {
-    resolvedMs.push({
-        id: ("MS-ENG-COMMS-" + m.name + "-" + idx).replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80),
-        name: m.name,
-        start: m.start,
-        end: null,
-        cat: m.cat,
-        icon: m.icon,
-        parent: "ENG-COMMS",
-        goal: "5",
-        type: "Participant",
+if (!__hasSourceEngCommsMs) {
+    __engCommsMs.forEach(function (m, idx) {
+        resolvedMs.push({
+            id: ("MS-ENG-COMMS-" + m.name + "-" + idx).replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80),
+            name: m.name,
+            start: m.start,
+            end: null,
+            cat: m.cat,
+            icon: m.icon,
+            parent: "ENG-COMMS",
+            goal: "5",
+            type: "Participant",
+        });
     });
-});
+}
    return inits.concat(resolvedMs);
 }
 function rmEnrichRows(rows, planningLookup) {
@@ -4336,10 +4341,10 @@ function rmPrintRoadmap() {
             bar = "<div class='bar' style='left:" + l + "%;width:" + ww + "%;background:" + barColor + ";'>" + (ww > 5 ? rmHtmlEsc(item.name) : "") + "</div>";
         }
         else if (!hasDates && item.quarter) {
-            var qCol = cols.find(function (c) { return c.q === String(item.quarter).trim(); });
-            if (qCol) {
-                var ql = rmPctForPrint(qCol.start.toLocaleDateString("en-US"), false, vs, ve);
-                var qr = rmPctForPrint(qCol.end.toLocaleDateString("en-US"), true, vs, ve);
+            var qRange = rmQuarterToRange(item.quarter);
+            if (qRange) {
+                var ql = rmPctForPrint(qRange.start.toLocaleDateString("en-US"), false, vs, ve);
+                var qr = rmPctForPrint(qRange.end.toLocaleDateString("en-US"), true, vs, ve);
                 if (ql !== null && qr !== null) {
                     ql = Math.max(0, Math.min(100, ql));
                     qr = Math.max(0, Math.min(100, qr));
@@ -4945,8 +4950,8 @@ function RoadmapView(props) {
                 depFocusData.downstream.length),
             React.createElement("button", { onClick: function () { setDepFocus(null); }, style: { marginLeft: "auto", fontSize: 10, border: "1px solid #EADFB8", borderRadius: 6, background: "#fff", color: "#7D6608", cursor: "pointer", padding: "3px 8px" } }, "Clear focus"))),
         React.createElement("div", { style: { flex: IS_EMBEDDED ? "none" : 1, display: "flex", overflow: IS_EMBEDDED ? "visible" : "hidden" } },
-            React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", overflow: IS_EMBEDDED ? "visible" : "hidden" } },
-                React.createElement("div", { style: { display: "flex", flexShrink: 0, borderBottom: "2px solid #e0e0e0", background: "#f7f7f7", zIndex: 15, position: "sticky", top: IS_EMBEDDED ? "var(--aou-sticky-offset, 0px)" : 0 } },
+            React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0, height: IS_EMBEDDED ? "clamp(420px, 68vh, 720px)" : "auto", maxHeight: IS_EMBEDDED ? "720px" : "none" } },
+                React.createElement("div", { style: { display: "flex", flexShrink: 0, borderBottom: "2px solid #e0e0e0", background: "#f7f7f7", zIndex: 15, position: "relative" } },
                     React.createElement("div", { style: { width: RM_LABEL_W, minWidth: RM_LABEL_W, flexShrink: 0, borderRight: "1px solid #e5e5e5", display: "flex", flexDirection: "column" } },
                         React.createElement("div", { style: { height: 22, borderBottom: "1px solid #ebebeb" } }),
                         React.createElement("div", { style: { height: 24, display: "flex", alignItems: "center", padding: "0 14px", fontSize: 10, textTransform: "uppercase", letterSpacing: .8, color: "#bbb", fontWeight: 600 } }, "Initiative")),
@@ -4960,7 +4965,7 @@ function RoadmapView(props) {
                                 var now = RM_TODAY >= c.start && RM_TODAY <= c.end;
                                 return React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: now ? 600 : 400, color: now ? "#2471A3" : "#bbb", background: now ? "#EBF5FB" : "#f7f7f7", borderRight: i < cols.length - 1 ? "1px solid #e8e8e8" : "none" } }, c.label);
                             }))))),
-                React.createElement("div", { style: { flex: IS_EMBEDDED ? "none" : 1, display: "flex", overflowX: "auto", overflowY: IS_EMBEDDED ? "visible" : "auto", position: "relative" }, onScroll: function (e) { var hdr = document.getElementById("rm-col-hdr"); if (hdr)
+                React.createElement("div", { style: { flex: 1, minHeight: 0, display: "flex", overflowX: "auto", overflowY: "auto", overscrollBehavior: "contain", position: "relative" }, onScroll: function (e) { var hdr = document.getElementById("rm-col-hdr"); if (hdr)
                         hdr.scrollLeft = e.currentTarget.scrollLeft; } },
                     React.createElement("div", { style: { width: RM_LABEL_W, minWidth: RM_LABEL_W, flexShrink: 0, borderRight: "1px solid #e5e5e5", position: "sticky", left: 0, zIndex: 8, background: "#fff", alignSelf: "flex-start", minHeight: "100%" } }, groups.map(function (pair) {
                         var gKey = pair[0], gItems = pair[1];
@@ -4977,7 +4982,7 @@ function RoadmapView(props) {
                                         e.currentTarget.style.background = "transparent"; } },
                                     React.createElement("div", { style: { width: 58, flexShrink: 0, alignSelf: "stretch", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 3, paddingRight: 6, marginRight: 6, borderRight: "1px solid #f0f2f4" } },
                                         React.createElement("span", { style: { fontSize: 10, color: "#8a96a3", fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 600, whiteSpace: "nowrap" } }, item.id),
-                                        showAud && rmIsConcept(item) ? React.createElement(RmConceptBadge, { item: item }) : React.createElement("span", { style: { height: 15 } })),
+                                        showAud && rmIsConcept(item) && !isConceptStatus(item.planningStatus) ? React.createElement(RmConceptBadge, { item: item }) : React.createElement("span", { style: { height: 15 } })),
                                     React.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 } },
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 } },
                                             showAud && rmRankValue(item) != null && (React.createElement("span", { title: CYCLE.current + " rank " + rmRankLabel(item), style: { fontSize: 8.5, fontWeight: 800, padding: "2px 6px", borderRadius: 3, background: "#FEF5E7", color: "#9A6800", border: "1px solid #F4D03F", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1, letterSpacing: .2, flexShrink: 0 } }, rmRankLabel(item))),
@@ -4998,16 +5003,18 @@ function RoadmapView(props) {
                                         React.createElement(RmGridLines, { n: cols.length }))),
                                     gItems.map(function (item) {
                                         var role = depRole(item.id), rs = rmDepRelationStyle(role);
-                                        var l2 = pct(item.start, false), r2 = pct(item.end, true);
+                                        var committedConceptQuarter = (item.planningStatus === "Committed Concept" && item.quarter) ? rmQuarterToRange(item.quarter) : null;
+                                        var hasDates = rmHasFullDates(item) && !committedConceptQuarter;
+                                        var l2 = hasDates ? pct(item.start, false) : null, r2 = hasDates ? pct(item.end, true) : null;
                                         var w = (l2 !== null && r2 !== null) ? r2 - l2 : 0;
-                                        var hasDates = rmHasFullDates(item), barCol = GOALS[item.goal] ? GOALS[item.goal].color : "#888", isDone = rmIsComplete(item);
+                                        var barCol = GOALS[item.goal] ? GOALS[item.goal].color : "#888", isDone = rmIsComplete(item);
                                         var capacityFlagged = Boolean(showAud && noCapacityTeams(item.id));
                                         var timelineBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : "transparent");
                                         var ms = getMs(item.id);
                                         var spread = rmSpreadMs(ms, function (d, isEnd) { return pct(d, isEnd, true); });
-                                        var qCol = (!hasDates && item.quarter) ? rmFindQuarterCol(item.quarter, cols) : null;
-                                        var qL = qCol ? pct(qCol.start.toLocaleDateString("en-US"), false) : null;
-                                        var qR = qCol ? pct(qCol.end.toLocaleDateString("en-US"), true) : null;
+                                        var qRange = committedConceptQuarter || ((!hasDates && item.quarter) ? rmQuarterToRange(item.quarter) : null);
+                                        var qL = qRange ? pct(qRange.start.toLocaleDateString("en-US"), false) : null;
+                                        var qR = qRange ? pct(qRange.end.toLocaleDateString("en-US"), true) : null;
                                         var qW = (qL !== null && qR !== null) ? qR - qL : 0;
                                         return (React.createElement("div", { key: item.id, style: { height: RM_ROW_H, position: "relative", borderBottom: "1px solid #f5f5f5", background: timelineBg, opacity: rs.opacity } },
                                             React.createElement(RmGridLines, { n: cols.length, faint: true }),
