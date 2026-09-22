@@ -129,8 +129,7 @@ body.aou-embedded .aou-view-scroll{flex:none;overflow:visible;height:auto;}
 })();
 </script>
 <script>
-/* Dashboard v3.2 — reverted baseline + Roadmap sticky date header + deduplicated concept badges + full-quarter concept timing.
-   QPE summary cards now tell the cycle story without double-counting NEW initiatives as a separate top-line total.
+/* Dashboard v3.2 — cross-view navigation restored for single-view dashboards + QPE guide cleanup; explicit concept statuses + simplified QPE history UX + Roadmap fix + historical Capacity team discovery.
    Past QPE Activity is removed because historical cycles are available in the cycle selector.
    Roadmap legend no longer references an out-of-scope initiative item. */
 
@@ -829,6 +828,32 @@ function aouInitialView() {
         return "qpe";
     return "qpe";
 }
+function aouInitialInitiativeId() {
+    return String(aouUrlParam("initiative") || aouUrlParam("initiativeId") || "").trim();
+}
+function aouSingleViewParamFor(targetView) {
+    if (targetView === "roadmap") return "roadmap-only";
+    if (targetView === "capacity") return "capacity-only";
+    return "qpe-only";
+}
+function aouCrossViewUrl(targetView, initiativeId, cycleKey) {
+    try {
+        var u = new URL(window.location.href);
+        u.searchParams.set("view", aouSingleViewParamFor(targetView));
+        u.searchParams.delete("dashboard");
+        u.searchParams.delete("tab");
+        u.searchParams.delete("roadmapOnly");
+        u.searchParams.delete("roadmap-only");
+        if (initiativeId) u.searchParams.set("initiative", initiativeId);
+        else u.searchParams.delete("initiative");
+        u.searchParams.delete("initiativeId");
+        if (cycleKey) u.searchParams.set("cycle", cycleKey);
+        return u.toString();
+    }
+    catch (e) {
+        return "";
+    }
+}
 const SINGLE_VIEW_MODE = aouSingleViewMode();
 const IS_SINGLE_VIEW = Boolean(SINGLE_VIEW_MODE);
 const IS_ROADMAP_ONLY = SINGLE_VIEW_MODE === "roadmap";
@@ -1071,13 +1096,12 @@ function IdentityBlock(props) {
                     init.status === "Backlogged" ? " because it is Backlogged." :
                         " because it has been Eliminated.")),
         React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" } },
-            !IS_SINGLE_VIEW && props.currentView !== "qpe" && (React.createElement("button", { onClick: function () { props.onNavigateView("qpe", init.id); }, style: navLinkStyle }, "View in QPE \u2192")),
-            !IS_SINGLE_VIEW && props.currentView !== "roadmap" && (React.createElement("button", { onClick: function () { props.onNavigateView("roadmap", init.id); }, style: navLinkStyle }, "View in Roadmap \u2192")),
-            !IS_SINGLE_VIEW && props.currentView !== "capacity" && (React.createElement("button", { onClick: function () { props.onNavigateView("capacity", init.id); }, style: navLinkStyle }, "View in Capacity \u2192")),
+            props.currentView !== "qpe" && (React.createElement("button", { onClick: function () { props.onNavigateView("qpe", init.id); }, style: navLinkStyle }, "View in QPE \u2192")),
+            props.currentView !== "roadmap" && (React.createElement("button", { onClick: function () { props.onNavigateView("roadmap", init.id); }, style: navLinkStyle }, "View in Roadmap \u2192")),
+            props.currentView !== "capacity" && (React.createElement("button", { onClick: function () { props.onNavigateView("capacity", init.id); }, style: navLinkStyle }, "View in Capacity \u2192")),
             psiMapped ? (React.createElement("a", { href: psiUrl, target: "_blank", rel: "noopener noreferrer", style: Object.assign({}, navLinkStyle, { textDecoration: "none", display: "inline-flex", alignItems: "center" }) }, "View in PSI \u2197")) : IS_ADMIN ? (React.createElement("span", { title: "No PSI link assigned for this initiative", style: Object.assign({}, navLinkStyle, { background: "#f5f5f5", color: "#aaa", borderColor: "#e0e0e0", cursor: "not-allowed", display: "inline-flex", alignItems: "center", gap: 3 }) },
                 "PSI link ",
-                React.createElement(DQFlag, { issue: "PSI link not assigned" }))) : null,
-            IS_SINGLE_VIEW && null)));
+                React.createElement(DQFlag, { issue: "PSI link not assigned" }))) : null)));
 }
 function CycleDriftBanner(props) {
     if (!props.drift)
@@ -2257,22 +2281,22 @@ function QpeMainView(props) {
                     React.createElement("div", { style: { fontSize: 9.5, color: "#1E8449", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "\u2713 Committed"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#1E8449", lineHeight: 1.1, marginTop: 3 } }, activeSummary.committed.length),
                     React.createElement("div", { style: { fontSize: 9.5, color: "#1E8449", opacity: .75, marginTop: 2 } }, "ratified this cycle")),
-                React.createElement("div", { onClick: function () { props.onListDrill({ label: "Proposed — " + CYCLE.current, items: activeSummary.proposed, sublabel: cycleStory.newProposed.length + " new · " + Math.max(0, activeSummary.proposed.length - cycleStory.newProposed.length) + " continuing", accent: "#9A6800" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
+                React.createElement("div", { onClick: function () { props.onListDrill({ label: "Proposed — " + CYCLE.current, items: activeSummary.proposed, sublabel: "awaiting ratification", accent: "#9A6800" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
                     React.createElement("div", { style: { fontSize: 9.5, color: "#9A6800", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Proposed"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#9A6800", lineHeight: 1.1, marginTop: 3 } }, activeSummary.proposed.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#8B6F1F", marginTop: 2 } },
-                        cycleStory.newProposed.length,
-                        " new · ",
-                        Math.max(0, activeSummary.proposed.length - cycleStory.newProposed.length),
-                        " continuing")),
-                cycleStory.backlogged.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: CYCLE.previous + " committed → Backlogged", items: cycleStory.backlogged, sublabel: "committed last cycle; now deferred", accent: "#7D6608" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#7D6608", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, CYCLE.previousShort + " → Backlogged"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#7D6608", lineHeight: 1.1, marginTop: 3 } }, cycleStory.backlogged.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#777", marginTop: 2 } }, "previously committed"))),
-                cycleStory.completed.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: CYCLE.previous + " committed → Complete", items: cycleStory.completed, sublabel: "committed last cycle; completed by cycle close", accent: "#1E8449" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#1E8449", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, CYCLE.previousShort + " → Complete"),
-                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#1E8449", lineHeight: 1.1, marginTop: 3 } }, cycleStory.completed.length),
-                    React.createElement("div", { style: { fontSize: 9.5, color: "#777", marginTop: 2 } }, "completed by cycle close"))),
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "not ranked")),
+                React.createElement("div", { onClick: function () { props.onListDrill({ label: "New Initiatives — " + CYCLE.current, items: activeSummary.newDesignated, sublabel: "Project Type = New", accent: "#B3541E" }); }, style: { padding: "12px 14px", background: "#FFF8F2", border: "1px solid #F0C9AF", borderRadius: 10, cursor: "pointer" } },
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#B3541E", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "+ New Initiatives"),
+                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#B3541E", lineHeight: 1.1, marginTop: 3 } }, activeSummary.newDesignated.length),
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#9A6A4A", marginTop: 2 } }, "Project Type = New")),
+                activeSummary.backlogged.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Backlogged — " + CYCLE.current, items: activeSummary.backlogged, sublabel: "deferred this cycle", accent: "#7D6608" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#7D6608", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Backlogged"),
+                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#7D6608", lineHeight: 1.1, marginTop: 3 } }, activeSummary.backlogged.length),
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "deferred"))),
+                activeSummary.complete.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Complete — " + CYCLE.current, items: activeSummary.complete, sublabel: "closed this cycle", accent: "#1E8449" }); }, style: { padding: "12px 14px", background: "#fff", border: "1px solid #ececec", borderRadius: 10, cursor: "pointer" } },
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#1E8449", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Complete"),
+                    React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#1E8449", lineHeight: 1.1, marginTop: 3 } }, activeSummary.complete.length),
+                    React.createElement("div", { style: { fontSize: 9.5, color: "#999", marginTop: 2 } }, "closed"))),
                 activeSummary.exploratoryConcept.length > 0 && (React.createElement("div", { onClick: function () { props.onListDrill({ label: "Exploratory Concept — " + CYCLE.current, items: activeSummary.exploratoryConcept, sublabel: "visibility only; no current work or capacity collection", accent: "#6C3483" }); }, style: { padding: "12px 14px", background: "#FBF7FF", border: "1px solid #D7BDE2", borderRadius: 10, cursor: "pointer" } },
                     React.createElement("div", { style: { fontSize: 9.5, color: "#6C3483", fontWeight: 700, textTransform: "uppercase", letterSpacing: .4 } }, "Exploratory Concept"),
                     React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: "#6C3483", lineHeight: 1.1, marginTop: 3 } }, activeSummary.exploratoryConcept.length),
@@ -2472,7 +2496,7 @@ function QpeView(props) {
             : React.createElement(QpeListPanel, { list: listDrill, label: listDrill.label, sublabel: listDrill.sublabel, accent: listDrill.accent, onItemDrill: function (id) { setListDrill(null); setDrill(id); }, onClose: function () { setListDrill(null); } })),
         React.createElement(ViewGuide, { open: guideOpen, onClose: function () { setGuideOpen(false); }, title: "How to use the Quarterly Planning Dashboard", intro: "Read the cycle story, inspect goal lanes, and open initiative details from one planning view.", cards: [
                 { icon: "↔", title: "Cycle story", color: "#2471A3", bg: "#F4FAFF",
-                    body: React.createElement(React.Fragment, null, "The top tiles summarize the selected cycle without double-counting NEW initiatives. The Proposed tile breaks out how many are new versus continuing, while the transition tiles show prior-cycle committed work that is now Backlogged or Complete. Use the Cycle selector to review prior quarters and compare historical portfolio states.") },
+                    body: React.createElement(React.Fragment, null, "The top tiles summarize the selected cycle. Use the Cycle selector to review prior quarters and compare historical portfolio states.") },
                 { icon: "🎯", title: "Goal lanes", color: "#6C3483", bg: "#FBF7FF",
                     body: React.createElement(React.Fragment, null, "Goal lanes group initiatives by strategic goal. Click a lane header to open goal details, including objectives and owners; click an initiative row to open its drill-down.") },
                 { icon: "🔎", title: "Filters & search", color: "#117A65", bg: "#F4FFFB",
@@ -2497,11 +2521,13 @@ function QpeView(props) {
                         ", and ",
                         React.createElement("strong", null, "POC/PdM"),
                         ". Cross-view buttons jump to the same initiative in Roadmap or Capacity.") },
-                { icon: "⚠", title: "Data quality flags", color: "#7D6608", bg: "#FFF9EC",
+                { icon: "🔗", title: "Cross-view navigation", color: "#117A65", bg: "#F4FFFB",
                     body: React.createElement(React.Fragment, null,
-                        "An amber ",
-                        React.createElement("strong", null, "\u26A0"),
-                        " next to a field means a flagged issue: missing owner, missing description, Concept items with ranks, or a Status/Project Type conflict. Hover for the explanation.") },
+                        "From an initiative drill-down, click ",
+                        React.createElement("strong", null, "View in Roadmap \u2192"),
+                        " or ",
+                        React.createElement("strong", null, "View in Capacity \u2192"),
+                        " to jump to the same initiative on the other dashboards.") },
                 { icon: "📊", title: "Capacity signal", color: "#1E8449", bg: "#F4FFF7",
                     body: React.createElement(React.Fragment, null,
                         "The Capacity signal in each drill-down summarizes Confidence Index and performer counts. Click ",
@@ -2526,14 +2552,8 @@ function QpeView(props) {
                         React.createElement(Chip, { bg: "#FEF5E7", tx: "#9A6800" }, "NEW"),
                         " new project type this cycle"),
                     React.createElement("span", null,
-                        React.createElement(Chip, { bg: STATUS_CFG["Exploratory Concept"].bg, tx: STATUS_CFG["Exploratory Concept"].tx }, "Exploratory Concept"),
-                        " visibility-only future idea; not committed to execution and excluded from current-quarter capacity"),
-                    React.createElement("span", null,
-                        React.createElement(Chip, { bg: STATUS_CFG["Committed Concept"].bg, tx: STATUS_CFG["Committed Concept"].tx }, "Committed Concept"),
-                        " approved and funded future work with a future start; no current-quarter execution or capacity collection"),
-                    React.createElement("span", null,
                         React.createElement(Chip, { bg: "#F4ECF7", tx: "#6C3483" }, "Concept"),
-                        " legacy concept status; excluded from capacity"),
+                        " exploratory, excluded from capacity"),
                     React.createElement("span", null,
                         React.createElement("strong", { style: { color: "#9A6800" } }, "Rank #N"),
                         " CEO-ratified " + CYCLE.current + " ranking")))
@@ -4348,10 +4368,10 @@ function rmPrintRoadmap() {
             bar = "<div class='bar' style='left:" + l + "%;width:" + ww + "%;background:" + barColor + ";'>" + (ww > 5 ? rmHtmlEsc(item.name) : "") + "</div>";
         }
         else if (!hasDates && item.quarter) {
-            var qRange = rmQuarterToRange(item.quarter);
-            if (qRange) {
-                var ql = rmPctForPrint(qRange.start.toLocaleDateString("en-US"), false, vs, ve);
-                var qr = rmPctForPrint(qRange.end.toLocaleDateString("en-US"), true, vs, ve);
+            var qCol = cols.find(function (c) { return c.q === String(item.quarter).trim(); });
+            if (qCol) {
+                var ql = rmPctForPrint(qCol.start.toLocaleDateString("en-US"), false, vs, ve);
+                var qr = rmPctForPrint(qCol.end.toLocaleDateString("en-US"), true, vs, ve);
                 if (ql !== null && qr !== null) {
                     ql = Math.max(0, Math.min(100, ql));
                     qr = Math.max(0, Math.min(100, qr));
@@ -4957,8 +4977,8 @@ function RoadmapView(props) {
                 depFocusData.downstream.length),
             React.createElement("button", { onClick: function () { setDepFocus(null); }, style: { marginLeft: "auto", fontSize: 10, border: "1px solid #EADFB8", borderRadius: 6, background: "#fff", color: "#7D6608", cursor: "pointer", padding: "3px 8px" } }, "Clear focus"))),
         React.createElement("div", { style: { flex: IS_EMBEDDED ? "none" : 1, display: "flex", overflow: IS_EMBEDDED ? "visible" : "hidden" } },
-            React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0, height: IS_EMBEDDED ? "clamp(420px, 68vh, 720px)" : "auto", maxHeight: IS_EMBEDDED ? "720px" : "none" } },
-                React.createElement("div", { style: { display: "flex", flexShrink: 0, borderBottom: "2px solid #e0e0e0", background: "#f7f7f7", zIndex: 15, position: "relative" } },
+            React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", overflow: IS_EMBEDDED ? "visible" : "hidden" } },
+                React.createElement("div", { style: { display: "flex", flexShrink: 0, borderBottom: "2px solid #e0e0e0", background: "#f7f7f7", zIndex: 15, position: "sticky", top: IS_EMBEDDED ? "var(--aou-sticky-offset, 0px)" : 0 } },
                     React.createElement("div", { style: { width: RM_LABEL_W, minWidth: RM_LABEL_W, flexShrink: 0, borderRight: "1px solid #e5e5e5", display: "flex", flexDirection: "column" } },
                         React.createElement("div", { style: { height: 22, borderBottom: "1px solid #ebebeb" } }),
                         React.createElement("div", { style: { height: 24, display: "flex", alignItems: "center", padding: "0 14px", fontSize: 10, textTransform: "uppercase", letterSpacing: .8, color: "#bbb", fontWeight: 600 } }, "Initiative")),
@@ -4972,7 +4992,7 @@ function RoadmapView(props) {
                                 var now = RM_TODAY >= c.start && RM_TODAY <= c.end;
                                 return React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: now ? 600 : 400, color: now ? "#2471A3" : "#bbb", background: now ? "#EBF5FB" : "#f7f7f7", borderRight: i < cols.length - 1 ? "1px solid #e8e8e8" : "none" } }, c.label);
                             }))))),
-                React.createElement("div", { style: { flex: 1, minHeight: 0, display: "flex", overflowX: "auto", overflowY: "auto", overscrollBehavior: "contain", position: "relative" }, onScroll: function (e) { var hdr = document.getElementById("rm-col-hdr"); if (hdr)
+                React.createElement("div", { style: { flex: IS_EMBEDDED ? "none" : 1, display: "flex", overflowX: "auto", overflowY: IS_EMBEDDED ? "visible" : "auto", position: "relative" }, onScroll: function (e) { var hdr = document.getElementById("rm-col-hdr"); if (hdr)
                         hdr.scrollLeft = e.currentTarget.scrollLeft; } },
                     React.createElement("div", { style: { width: RM_LABEL_W, minWidth: RM_LABEL_W, flexShrink: 0, borderRight: "1px solid #e5e5e5", position: "sticky", left: 0, zIndex: 8, background: "#fff", alignSelf: "flex-start", minHeight: "100%" } }, groups.map(function (pair) {
                         var gKey = pair[0], gItems = pair[1];
@@ -4989,7 +5009,7 @@ function RoadmapView(props) {
                                         e.currentTarget.style.background = "transparent"; } },
                                     React.createElement("div", { style: { width: 58, flexShrink: 0, alignSelf: "stretch", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 3, paddingRight: 6, marginRight: 6, borderRight: "1px solid #f0f2f4" } },
                                         React.createElement("span", { style: { fontSize: 10, color: "#8a96a3", fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 600, whiteSpace: "nowrap" } }, item.id),
-                                        React.createElement("span", { style: { height: 15 } })),
+                                        showAud && rmIsConcept(item) ? React.createElement(RmConceptBadge, { item: item }) : React.createElement("span", { style: { height: 15 } })),
                                     React.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 } },
                                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 } },
                                             showAud && rmRankValue(item) != null && (React.createElement("span", { title: CYCLE.current + " rank " + rmRankLabel(item), style: { fontSize: 8.5, fontWeight: 800, padding: "2px 6px", borderRadius: 3, background: "#FEF5E7", color: "#9A6800", border: "1px solid #F4D03F", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1, letterSpacing: .2, flexShrink: 0 } }, rmRankLabel(item))),
@@ -5010,18 +5030,16 @@ function RoadmapView(props) {
                                         React.createElement(RmGridLines, { n: cols.length }))),
                                     gItems.map(function (item) {
                                         var role = depRole(item.id), rs = rmDepRelationStyle(role);
-                                        var committedConceptQuarter = (item.planningStatus === "Committed Concept" && item.quarter) ? rmQuarterToRange(item.quarter) : null;
-                                        var hasDates = rmHasFullDates(item) && !committedConceptQuarter;
-                                        var l2 = hasDates ? pct(item.start, false) : null, r2 = hasDates ? pct(item.end, true) : null;
+                                        var l2 = pct(item.start, false), r2 = pct(item.end, true);
                                         var w = (l2 !== null && r2 !== null) ? r2 - l2 : 0;
-                                        var barCol = GOALS[item.goal] ? GOALS[item.goal].color : "#888", isDone = rmIsComplete(item);
+                                        var hasDates = rmHasFullDates(item), barCol = GOALS[item.goal] ? GOALS[item.goal].color : "#888", isDone = rmIsComplete(item);
                                         var capacityFlagged = Boolean(showAud && noCapacityTeams(item.id));
                                         var timelineBg = role !== "normal" && role !== "muted" ? rs.bg : (expanded === item.id ? "#EBF5FB" : "transparent");
                                         var ms = getMs(item.id);
                                         var spread = rmSpreadMs(ms, function (d, isEnd) { return pct(d, isEnd, true); });
-                                        var qRange = committedConceptQuarter || ((!hasDates && item.quarter) ? rmQuarterToRange(item.quarter) : null);
-                                        var qL = qRange ? pct(qRange.start.toLocaleDateString("en-US"), false) : null;
-                                        var qR = qRange ? pct(qRange.end.toLocaleDateString("en-US"), true) : null;
+                                        var qCol = (!hasDates && item.quarter) ? rmFindQuarterCol(item.quarter, cols) : null;
+                                        var qL = qCol ? pct(qCol.start.toLocaleDateString("en-US"), false) : null;
+                                        var qR = qCol ? pct(qCol.end.toLocaleDateString("en-US"), true) : null;
                                         var qW = (qL !== null && qR !== null) ? qR - qL : 0;
                                         return (React.createElement("div", { key: item.id, style: { height: RM_ROW_H, position: "relative", borderBottom: "1px solid #f5f5f5", background: timelineBg, opacity: rs.opacity } },
                                             React.createElement(RmGridLines, { n: cols.length, faint: true }),
@@ -5100,7 +5118,7 @@ function RoadmapView(props) {
    ════════════════════════════════════════════════════════════════════════════ */
 function App() {
     var [activeView, setActiveView] = useState(aouInitialView());
-    var [selectedInitiativeId, setSelectedInitiativeId] = useState(null);
+    var [selectedInitiativeId, setSelectedInitiativeId] = useState(aouInitialInitiativeId());
     var [driftDismissed, setDriftDismissed] = useState(false);
     var [schemaDismissed, setSchemaDismissed] = useState(false);
     var data = useDataLoader();
@@ -5121,9 +5139,16 @@ function App() {
     useEffect(function () { setDriftDismissed(false); }, [cycleDrift && cycleDrift.found]);
     useEffect(function () { setSchemaDismissed(false); }, [schemaIssues.length]);
     var selectInitiative = useCallback(function (targetView, initiativeId) {
+        if (IS_SINGLE_VIEW) {
+            var nextUrl = aouCrossViewUrl(targetView, initiativeId, data.state.selectedCycleKey);
+            if (nextUrl) {
+                window.location.assign(nextUrl);
+                return;
+            }
+        }
         setActiveView(targetView);
         setSelectedInitiativeId(initiativeId);
-    }, []);
+    }, [data.state.selectedCycleKey]);
     function handleTabClick(view) {
         setActiveView(view);
         setSelectedInitiativeId(null);
